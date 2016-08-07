@@ -1,0 +1,224 @@
+<?xml version="1.0" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>tsm_daily_report - emails daily summaries of Tivoli Storage Manager activity</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rel="stylesheet" href="style.css" type="text/css">
+<link rev="made" href="mailto:paudley@blackcat.ca" />
+</head>
+
+<body style="background-color: white">
+
+
+<!-- INDEX BEGIN -->
+<div name="index">
+<p><a name="__index__"></a></p>
+
+<ul>
+
+	<li><a href="#name">NAME</a></li>
+	<li><a href="#synopsis">SYNOPSIS</a></li>
+	<ul>
+
+		<li><a href="#options">Options</a></li>
+		<ul>
+
+			<li><a href="#general_options">General Options</a></li>
+			<li><a href="#section_selection_options">Section Selection Options</a></li>
+			<li><a href="#special_activity_log_options">Special Activity Log Options</a></li>
+			<li><a href="#debugging_options">Debugging Options</a></li>
+			<li><a href="#config_files">Config Files</a></li>
+		</ul>
+
+	</ul>
+
+	<li><a href="#authours">AUTHOURS</a></li>
+	<li><a href="#bugs">BUGS</a></li>
+	<li><a href="#copyright">COPYRIGHT</a></li>
+</ul>
+
+<hr name="index" />
+</div>
+<!-- INDEX END -->
+
+<p>
+</p>
+<h1><a name="name">NAME</a></h1>
+<p>tsm_daily_report - emails daily summaries of Tivoli Storage Manager activity</p>
+<p>
+</p>
+<hr />
+<h1><a name="synopsis">SYNOPSIS</a></h1>
+<p>tsm_daily_report [options]</p>
+<p>Modify the variables at the top of the script and then run it without any arguments.  For daily
+reports, place this script in your crontab.  The following options override variables set in the
+script.  All options may be abbreviated to the shortest unique string.</p>
+<p>
+</p>
+<h2><a name="options">Options</a></h2>
+<p>
+</p>
+<h3><a name="general_options">General Options</a></h3>
+<pre>
+ --config &lt;filename&gt;        read config values from the specified file (see Config Files below)</pre>
+<pre>
+ AUTHENTICATION:
+  --admin &lt;id&gt;               the TSM admin id to use
+  --password &lt;password&gt;      the password for the TSM admin</pre>
+<pre>
+ OUTPUT:
+  --stdout                   only report to stdout
+  --email                    only report via email
+  --txtsave                  only report to the text save file</pre>
+<pre>
+ SELECTING NODES:
+  --exclude &lt;node&gt;           exclude node from the report (may be specified multiple times)
+  --policy-domain &lt;domain&gt;   includes only selected domains (may be specified multiple times)</pre>
+<pre>
+     Note:  If you use --policy-domain or the policy_domain config file option you will get _only_
+            the domains you specify.  The default is to include all domains.</pre>
+<pre>
+ GENERAL:
+  --period &lt;sql query&gt;       specify a period using TSM SQL syntax (like &quot;begind=-1&quot;)
+  --transfer-time-max &lt;secs&gt; total transfer time after which we warn about slow clients
+  --dsmadmc &lt;path&gt;           specify the path of the dsmadmc executable
+  --slow-queries             turn slow or iterative queries on
+  --noslow-queries           turn slow or iterative queries off
+  --alter-tsm                turn on (or use --noalter-tsm to turn off) queries that might alter TSM
+  --empty-pri-to-scr         turn on changing empty private volumes into scratch volumes</pre>
+<pre>
+ DOCUMENTATION:
+  --help                     display usage information
+  --version                  display verison information
+  --man                      display the man page for this script</pre>
+<pre>
+ EMAIL OPTIONS:
+  --recipient &lt;address&gt;      send to this address
+  --sender &lt;address&gt;         send from this address</pre>
+<p>
+</p>
+<h3><a name="section_selection_options">Section Selection Options</a></h3>
+<p>Sections can be toggled individually by using these options or by modifying the %sections hash in
+the configuration area of the script.  A section can be disabled by using a &quot;no&quot; (&quot;--foo&quot; is
+disabled with &quot;--nofoo&quot;).  Section options are cumulative.</p>
+<pre>
+ --no-sections              turns all sections off
+ --all-sections             turns all sections on</pre>
+<pre>
+ --sec_act_process
+ --sec_admin_schedules
+ --sec_audit_lib
+ --sec_client_schedules
+ --sec_client_summary
+ --sec_db_and_log
+ --sec_drives_and_paths
+ --sec_drm_plans
+ --sec_log_stats
+ --sec_schedule_graph
+ --sec_scratch_volumes
+ --sec_serious_errors
+ --sec_script_information
+ --sec_storage_pools
+ --sec_unusual_logs
+ --sec_volume_information
+ --sec_volume_occupancy</pre>
+<p>For example to enable just the client summary section regardless of the settings in the script use:</p>
+<pre>
+ tsm_daily_report --no-sections --sec_client_summary</pre>
+<p>Or to disable only the audit library section use:</p>
+<pre>
+ tsm_daily_report --all-sections --nosec_audit_lib</pre>
+<p>Or the use the settings in the script but disable the drm plan section use:</p>
+<pre>
+ tsm_daily_report --nodrm_plans</pre>
+<p>
+</p>
+<h3><a name="special_activity_log_options">Special Activity Log Options</a></h3>
+<p>Sometimes it's desirable to save the activity log to file and report on it later.  This can be done with these options:</p>
+<pre>
+ --process-log-file &lt;filename&gt;          Read from a file instead of using &quot;query actlog&quot;
+ --save-log-file &lt;filename&gt;             Save the log to a file and exit
+ --query-actlog                         Query the activity log
+ --noquery-actlog                       Skip activity log queries</pre>
+<p>
+</p>
+<h3><a name="debugging_options">Debugging Options</a></h3>
+<p>When debugging, or possibly to speed up multiple runs of this script, you can save the queries to
+dsmadmc and reuse them.  They will be stored in a database in the current working directoy and used
+on subsequent runs.  This can be useful when combined with the --process-log-file option in order to
+process many saved logs without repeating queries to the server.  It is always safe to delete the
+created query-cache file when you no longer wish to store the queries.  This option requires the
+following additional perl modules: Memoize, GDBM_File, and MLDBM.</p>
+<pre>
+ --memoize [0|1]                        Enable/Disable memoizeing queries.</pre>
+<p>
+</p>
+<h3><a name="config_files">Config Files</a></h3>
+<p>Options may also be specified using a config file.  By default we look for a config file in
+/etc/tsm_daily_report.config but you can specify a file (or multiple files) to read on the command
+line.  If you specify the filename &quot;-&quot; (a single dash) then the config will be read from standard
+input.</p>
+<p>The config file is a standard text file that may contain:</p>
+<pre>
+    - blank lines
+    - comment lines starting with either # or *
+    - variable settings that start with the word &quot;set&quot;
+    - exclusions for nodes that take the form of &quot;exclude_node &lt;node&gt;&quot;, one node per line.
+    - policy domain selections that take the form of &quot;policy_domain &lt;domain&gt;&quot;, one domain per line.</pre>
+<p>Variables can be set by taking the variable name from the script and changing it thusly:</p>
+<pre>
+   In Script                               In Config File
+   -------------------------------         ----------------------------------
+   $tsm{alter_tsm} = 1               -&gt;    set tsm-&gt;alter_tsm = 1              # Turn on TSM altering queries
+   $email{sender} = &quot;foo@foo.com&quot;    -&gt;    set email-&gt;sender = foo@foo.com     # Change the email report sender
+   $sections{db_and_log} = 0         -&gt;    set sections-&gt;db_and_log = 0        # Turn off the DB and Log section</pre>
+<p>You can only set the variables that are used in the configuration of the script; these are all
+hashes in the top of the script that are declared using &quot;our&quot;.</p>
+<p>An example config file:</p>
+<pre>
+   # Configure our TSM server
+   set tsm-&gt;server = BIGSERVER</pre>
+<pre>
+   # Change the output options
+   set email-&gt;sender = admin@company.com
+   set output-&gt;email = 1</pre>
+<pre>
+   # Skip a few nodes
+   exclude_node yak
+   exclude_node idiotsmachine</pre>
+<pre>
+   # Only show these two policy domains
+   policy_domain BIGSERVERS
+   policy_domain IMPORTANTCLIENTS</pre>
+<p>
+</p>
+<hr />
+<h1><a name="authours">AUTHOURS</a></h1>
+<p>Written by Patrick Audley &lt;<a href="mailto:paudley@blackcat.ca">paudley@blackcat.ca</a>&gt; <a href="http://blackcat.ca">http://blackcat.ca</a></p>
+<pre>
+ Contributions from:
+  David McClelland &lt;David.McClelland@reuters.com&gt;
+  Marcel J.E. Mol &lt;marcel@mesa.nl&gt;
+  Shawn Bierman &lt;BiermanS@methodisthealth.org&gt;
+  Tobias Hofmann &lt;tobias.hofmann@medien.uni-weimar.de&gt;
+  James W. Johnke &lt;jjohnke@yahoo.com&gt;
+  Jason A. Specland &lt;jas2005@med.cornell.edu&gt;
+  Dariusz Pietrzak &lt;eyck@kuszelas.eu&gt;</pre>
+<p>
+</p>
+<hr />
+<h1><a name="bugs">BUGS</a></h1>
+<p>Please send me any comments, bug reports, suggestions or flame mail :)</p>
+<p>
+</p>
+<hr />
+<h1><a name="copyright">COPYRIGHT</a></h1>
+<p>Copyright 2003-2010 by Patrick Audley &lt;<a href="mailto:paudley@blackcat.ca">paudley@blackcat.ca</a>&gt;</p>
+<p>This program is licensed under the terms of the <strong>GPL</strong>.  If you didn't
+recieve a copy of the license, you can get it from
+<a href="http://www.gnu.org/licenses/gpl.html">http://www.gnu.org/licenses/gpl.html</a></p>
+
+</body>
+
+</html>

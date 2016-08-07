@@ -1,0 +1,2993 @@
+#!/usr/bin/perl -w
+#
+#  /-------[ LICENSE ]----------------------------------------------------------\
+#  |                                                                            |
+#  | Copyright 2003,2004 Patrick C. Audley <paudley@blackcat.ca>                |
+#  |                                                                            |
+#  | This program is free software; you can redistribute it and/or modify       |
+#  | it under the terms of the GNU General Public License as published by       |
+#  | the Free Software Foundation; either version 2 of the License, or          |
+#  | (at your option) any later version.                                        |
+#  |                                                                            |
+#  | This program is distributed in the hope that it will be useful,            |
+#  | but WITHOUT ANY WARRANTY; without even the implied warranty of	            |
+#  | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              |
+#  | GNU General Public License for more details.                               |
+#  |                                                                            |
+#  | You should have received a copy of the GNU General Public License          |
+#  | along with this program; if not, write to the Free Software                |
+#  | Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA  |
+#  | The full license can also be obtained from:                                |
+#  |                                                                            |
+#  |    http://www.gnu.org/licenses/gpl.txt                                     |
+#  |                                                                            |
+#  \----------------------------------------------------------------------------/
+#
+#  If you have any suggestions for this script, please send them to me at:
+#       paudley@blackcat.ca
+#
+#  Future versions may be found at:
+#
+#    http://patrickaudley.com/code/project/tsmdailyrep
+#
+#
+#
+# REQUIREMENTS
+#
+#   1. The script needs perl v5.6 or greater and the following perl
+#      modules that can be retrieved from CPAN:
+#
+#          MIME::Lite      (optional, only need for emailed reports)
+#          Net::SMTP       (optional, only needed if you define $mailhost)
+#                          (Net::SMTP is part of libnet)
+#          Compress::Zlib  (optional, for compressed email attachments)
+#          Pod::Usage      (optional, for pretty usage information)
+#
+#      If you don't have these, run:
+#         perl -MCPAN -e 'install MIME::Lite; install Compress::Zlib'
+#      or get them from:  http://www.cpan.org
+#
+#   2. You must run this on a machine with that has access via dsmadmc
+#      to the TSM server.
+#
+#   3. You must modify the variables in the first section below to fit
+#      your installation.
+#
+# ____
+# TODO
+#  - HTML output with mime alternatives and embedded images
+#  - report any 'session terminated, idle for x seconds' for clients
+#  - cope with multiple TSM servers
+#  - capture DELETE INVENTORY log messages
+#  - capture BACKUP VOLHIST information
+#  - display reusedelays for stgpools
+#  - show all tape states and report stats
+#  - identify volume that haven't been accessed in the last N months (candidates for audit volumes)
+#  - Jim> script.  Perhaps you can add a DRM section or modify the DRM
+#    Jim> Plan file section to also include a small table with the
+#    Jim> following columes:
+#    Jim> Mountable, Not Mountable, Courier, Vault, Vault Retrieve,
+#    Jim> Courier Retrieve
+#    Jim> and have the total amount of tapes (and perhaps library name)
+#    Jim> for each category.  It may also be nice, but perhaps make the
+#    Jim> report too long, to include the volume names for each
+#    Jim> category in another table.
+#  - From: Bernd Schemmer <Bernd.Schemmer@gmx.de>
+#    - section for just copy pools
+#    - sections for migration and reclaimation
+#    - be able to toggle volume filled messages or summarise them
+#  - process these lines:
+#    12/10/03 00:15:23 ANR4412I Data Base and Recovery Log Space expansion triggered.
+#    12/10/03 00:15:23 ANR4414I Data Base Space expansion Is Needed, 13823 Megabytes needed.
+#    12/10/03 00:15:36 ANR2248I Database assigned capacity has been extended.
+#    12/10/03 00:15:36 ANR4415I Data Base and Recovery Log Space Expansion Completed.
+#  - display which storage pool volumes are in when we show them anywhere.
+#  - fix the actlog being all one line in the email attachment... Grr..
+#
+#
+# _________________________
+# FUNDING AND CONTRIBUTIONS
+#
+#  Thanks to the Wellcome Trust for funding my time while working on this program.
+#
+#  Thanks to the following people for feature ideas and code contributions:
+#    David McClelland <David.McClelland@reuters.com>
+#       - clients not contacted in N days
+#       - filespaces not backed up in N days
+#    Marcel J.E. Mol <marcel@mesa.nl>
+#       - catching another case of continued log lines
+#    Shawn Bierman <BiermanS@methodisthealth.org>
+#       - server name and report date/time
+#       - typos and perl requirements
+#    Tobias Hofmann <tobias.hofmann@medien.uni-weimar.de>
+#       - catch restored object information
+#    James W. Johnke <jjohnke@yahoo.com> on Nov 11th, 2003
+#       - check for the presence of MIME::Lite
+#       - be able to specify the admin and password information via command line
+#       - disable/enable sections with more granularity
+#       - be able to turn off "update volume" type commands
+#       - many spelling and grammar fixes
+#       - several bug fixes
+#       - general goodness
+#    Jason A. Specland <jas2005@med.cornell.edu>
+#       - bug in volume information select
+#    Dariusz Pietrzak <eyck@kuszelas.eu>
+#       - comsetic fixes
+#       - updates to handle newer versions of TSM
+#
+# _______________
+# VERSION HISTORY
+#
+# v1.0 (2003/11/06)
+#  - prelimary version, ugly perl :)
+#
+# v1.1 (2003/11/09)
+#  - refactored perl code
+#  - summarize more log messages
+#  - make scratch queries actually work on other systems
+#  - added checks for:
+#    - nodes that haven't talked to the server in a while
+#    - filespaces that haven't been backed up in a while
+#  - added reports for:
+#    - average fill of tapes in each device class
+#
+# v1.2 (2003/11/15)
+#  - add session section
+#  - show loaded/empty status for drives
+#  - catch restored objects in the client summary and warn for unknown types
+#  - check for MIME::Lite and disable email if not found
+#  - revamp configuration sections, use more hashes
+#  - add command line arguments for many things
+#  - add fine-grained section control
+#  - added the $alter_library flag to toggle commands that might alter TSM
+#  - added the option to skip slow or iterative queries
+#
+# v1.3 (2003/11/19)
+#  - add reporting of drives that need to be cleaned in the drives section
+#  - significant activity log parsing speedups for very large logs
+#  - create a serious errors section
+#  - detect data-integrity errors and attach a list of them if found
+#  - informating about audited volumes
+#  - ability to audit random volumes
+#  - added memoize support and the no_queries options to help in debugging and running offline.
+#
+# v1.4 (2004/02/18)
+#  - make alerts appear in the serious errors section
+#  - show breakdown of volumes by type per library in the volume information section
+#  - make alter_tsm a command line option
+#  - try to work around a missing Pod::Usage
+#  - change the "use warnings" pragmas to just a "-w" at the top of the script
+#  - display locked client nodes
+#  - add column numbers to debug_tables output
+#  - add db and log mirroring information
+#  - add an advice function
+#  - report private volumes that have no recorded last use, optionally turn these into scratch volumes.
+#  - fix labeling of bulk io volumes
+#  - add data transfer time to client display
+#  - detect slow nodes
+#  - add list of added users and nodes, also show policy domain association
+#  - add config file parsing
+#
+# v1.5 (2004/03/03)
+#  - add a schedule graph section
+#  - exclude nodes that you don't care about
+#  - added the script information section
+#  - added a debug section - mainly for me while developing
+#  - report SQL errors
+#  - support narrowing report to specific policy domains
+#  - detect nodes that were terminated for being idle
+#
+# v1.6 (2010/09/01)
+#  - fix for parsing of maintenance lines (eyck)
+#
+##
+my $version = 1.6;
+use POSIX;
+use Getopt::Long;
+use strict;
+
+###########################################################################################
+#
+#  This group of variables will need to be changed in order for this script to work at all.
+#
+our %tsm = (
+
+	   # Where we look for a config file.  This config file can specify any of the variables in
+	   # the script and will override variable specified here.  See the man page (or run with
+	   # "--help") to see the format of the config file.
+	   config_file => "/etc/tsm_daily_report.config",
+
+	   admin => "admin",                                   # <- The account used to access the TSM server.
+	   password => "admin",                                # <- The password for the above account.
+	   dsmadmc => "/opt/tivoli/tsm/client/ba/bin/dsmadmc", # <- The full path to dsmadmc.
+	   server => "TSM",                                    # <- The TSM server to query.
+	   drmdir => "/tsmserver/drmplans",                    # <- Where you keep your DRM plans, set this
+                                                               #  to "" to disable DRM attachments.
+                                                               #  This will have to be a network
+                                                               #  share in most situations.
+	   alter_tsm => 0,                 # <- Is this is set then the script might attempt to
+                                           #  alter TSM by issuing commdands that may fix problems
+                                           #  it finds.  This might not be what you want, please
+                                           #  search this script for "ALTER_TSM" so see all the
+                                           #  areas this might happen.
+	   period => "begind=-1",          # <- How far to look back.  "begind=-1" for one day. If
+                                           #  you backup window spans midnight you might want
+                                           #  something like "begind=TODAY-1 begint=19:45 endd=TODAY
+                                           #  endt=19:45"
+	   scratch_low => 10,              # <- How many scratch tapes should we keep.
+	   dblog_high => 90,               # <- What percentage of database usage generates a
+                                           #  warning.
+	   stg_high => 90,                 # <- What percentage of storage pool usage generates a
+                                           #  warning.
+	   search_log_if_missed => 0,      # <- Would you like to see all the log entries for a
+                                           #  client if they miss their scheduled backup?
+	   vtape_size => 1024*100,         # <- How large are your tapes on average (in MB)?
+	   vtape_overhead => 1.10,         # <- How much would you like to budget for overhead? 
+                                           #  (1.10 = 10%)
+	   max_reclaim => 25,              # <- Tapes with more than max_reclain percentage to be
+                                           #  reclaimed will be reported.
+	   contact_days => 1,              # <- Warn about nodes that haven't talked to the server
+                                           #  in N days.
+	   fs_max_days => 2,               # <- Warn about filespaces that haven't been backed up in
+                                           #  N days.
+	   transfer_time_max => 60,        # <- Number of minutes in a client transfer before we
+                                           #  trigger an alert.
+	   slow_queries => 1,              # <- Whether we do slow or iterative queries.  If you
+                                           #  have a very fast TSM server or don't have a huge
+                                           #  amount of tapes, this is probably OK.  If you have
+                                           #  lots of tapes you or find the script takes forever to
+                                           #  run, try turning this off.  To see which queries this
+                                           #  might run, search this script for "SLOW_QUERY".
+	   audit_random_volumes => 0,      # <- If this is not zero then we will audit this many
+                                           #  volumes each run.  Make sure you know what this does.
+                                           #  This requires alter_tsm to be set and the Volume
+                                           #  Information section to be active.
+	   no_queries => 0,                # <- If this is set then we won't make any queries.  This
+                                           #  is useful if you would like process a saved activity
+                                           #  log without contacting the server.
+	   empty_private_to_scratch => 0,  # <- If this is set then we will move private volumes
+                                           #  with no last use information into the scratch pool.
+                                           #  Use with caution.
+
+	  );
+
+###########################################################################################
+#
+#  These variables control the output, you can choose multiple output styles if you'd like.  Some of
+#  the output styles might require perl modules that you don't have; they will warn you if that's
+#  the case and default to printing a text report on STDOUT.
+#
+our %output = (
+	       report_email => 0,                      # Send the report in email?
+	       report_stdout => 1,                     # Output it to stdout?
+	       report_txtsave => 1,                    # Save it in a text file?
+	      );
+
+###########################################################################################
+#
+#  Node exclusions.  Nodes in this hash as keys will be cheerfully ignored.
+#
+#  For example, to exclude the nodes foo and yak you would use:
+#
+#   my %nodeX = ( "foo" => 1, "yak" => 1 );
+#
+my %nodeX = ();
+
+###########################################################################################
+#
+#  Policy Domain inclusions.  If policyIcheck is set then only the domains set in this has
+#  will be displayed in the client related sections.
+#
+#  For example, to see only the BIGSERVERS policy domain you would use:
+#
+#   my %policyI = ( BIGSERVERS => 1 );
+#   my $policyIcheck = 1;
+#
+my %policyI = ();
+my $policyIcheck = 0;
+
+
+# If you set report_email above then change this section.
+our %email = (
+	      recipients => 'you@your.company',          # <- Who gets the email report?  Multiple
+	                                                 #  recipients can be specified using commas
+                                                         #  to seperate them.
+	      sender => 'tsm@your.company',              # <- Who the report appears to come from.
+	      compress_attachments => 1,                 # <- Should we compress attachments with
+                                                         #  gzip?  This requires the Compress::zlib
+                                                         #  module.
+	      mailhost => '',                            # <- If we don't have sendmail installed, what
+	                                                 #  SMTP host should we use.  If you want to
+	                                                 #  use your system's sendmail set this to
+	                                                 #  ''.  Setting this option requires the
+	                                                 #  Net::SMTP module.
+	      attach_drm_plan => 1,                      # <- Would you like a copy of the DRM plan
+                                                         #  as an attachment?  (see drmdir in the tsm
+                                                         #  section above as well)
+	      attach_actlog => 1,                        # <- Would you like a copy of the active log
+                                                         #  as an attachment?
+	      attach_data_errors => 1,                   # <- Would you like an attachment of all the
+                                                         #  errors if any are found?
+	      attach_scripts => 1,                       # <- Would you like an attachment of all the
+	                                                 #  admin scripts?
+	     );
+
+# If you set report_txtsave above then change this section.
+our %txtsave = (
+		filename => '/tmp/tsm_report.txt',       # <- Where you would like to save a copy of the
+                                                         #  text report.
+		errors_filename => '/tmp/tsm_errors.txt',# <- Where you would like to save a copy of
+                                                         #  all the data errors if any are found.  Set this to
+	                                                 #  '' to disable creating this file.
+	        actlog_filename => '/tmp/tsm_actlog.txt',# <- Where you would like to save a copy of
+	                                                 #  all the actlog lines that aren't processed
+	       );
+###########################################################################################
+#
+#  Here you can choose which sections get run.  Note that some of these sections may take a long
+#  time to run on your setup or the may not apply in your configuration at all.
+#
+our %sections = (
+		 serious_errors => 1,
+		 client_schedules => 1,
+		 client_summary => 1,
+		 volume_occupancy => 1,
+		 admin_schedules => 1,
+		 db_and_log => 1,
+		 volume_information => 1,
+		 storage_pools => 1,
+		 scratch_volumes => 1,
+		 audit_lib => 0,            # !! Warning, this will try to checkin tapes and audit
+                                            # libraries automatically.  (see the "Importing/Labelling
+                                            # Volumes and Library Audit" section below if you're not
+                                            # sure.
+		 act_process => 1,
+		 drives_and_paths => 1,
+		 drm_plans => 1,
+		 log_stats => 1,
+		 unusual_logs => 1,
+		 schedule_graph => 1,
+		 script_information => 1,
+		 debug => 0,
+		 left_over_log => 0,
+		);
+
+###########################################################################################
+#
+#  This group of variables change the behaviour of the output and determine which features
+#  of the script are run.  Most of these are safe to change; read the descriptions carefully
+#  to determine whether changing them might harm your setup.
+#
+our %format = (
+	       number_tables => 0,       # Add numbers to the table to help track errors in this script?
+	       show_queries => 0,        # Would you like to see all the queries that are used?
+	       initial_indent => "    ", # How much to indent the inital lines in paragraphs.
+	       body_indent => "  "       # How much to indent the rest of the paragraph.
+	      );
+
+###########################################################################################
+#
+#  These variables should probably be left alone.  Use the "--process-log-file" command line
+#  argument instead of playing with these directlty.
+#
+my %actlog = (
+	      query => 1,
+	      save => 0,
+	      load => 0,
+	      filename => "",
+	     );
+
+my @ignored_anrs = (
+		    '0400I',                # session started for node...
+		    '0403I',                # session ended
+		    '0405I',                # admin session ended
+		    '0406I',                # session starts
+		    '0407I',                # session starts admin
+		    '0487W.*Session',       # session warnings
+		    '0490I.*session',       # session warnings
+		    '0609I',                # DELETE FILESPACE starts
+		    '0800I',                # DELETE FILESPACE starts
+		    '0802I',                # DELETE FILESPACE starts
+		    '0811I',                # inventory expiration starts
+		    '0916I',                # license information
+		    '0940I',                # cancel requests
+		    '0985I',                # extra storage pool backup information
+		    '0986I',                # extra migration information
+		    '0993I',                # license information
+		    '1044I',                # volume requests
+		    '1199I',                # volumes required for audits
+		    '1360I',                # "output volume opened|closed..."
+		    '1361I',                # "output volume opened|closed..."
+		    '2023E',                # cancel request errors
+		    '2110I',                # "... started as ..."
+		    '2202I',                # storage pool updates
+		    '2207I',                # volume updates
+		    '2310W',                # audit volume start warning message
+		    '2312I',                # audit volume starts
+		    '2313I',                # audit starts
+		    '2369I',                # succesful db backup (picked up elsewhere)
+		    '2507I',                # extra schedule information
+		    '2560I',                # license information
+		    '2561I',                # schedule prompter messagers
+		    '2562I',                # "Automatic event record deletion started ..."
+		    '2565I\s0\s+',          # "0 schedules for immediate client actions have been deleted ..."
+		    '2753I',                # schedule responses
+		    '2803I',                # license information
+		    '2817I',                # AUDIT LICENSES
+		    '282[057]I',            # license information
+		    '2841W',                # license compliance warnings (picked up elsewhere)
+		    '285[235]I',            # more license cruft
+		    '2860I',                # license information
+		    '439[19]I',             # TODO:  Expiration processing.
+		    '4554I',                # database backup status messages
+		    '4726I',                # license information
+		    '8190I',                # license information
+		    '8200I',                # startup messages
+		    '8285I',                # license information
+		    '8325I',                # expired mounts
+		    '8330I',                # volume mounted information
+		    '8336I',                # "Verifying label of..."
+		    '8352I',                # request lists
+		    '8373I',                # request announcements
+		    '8422I',                # CHECKIN LIBVOLUME
+		    '8439I',                # license information
+		    '8457I',                # AUDIT LIBRARY
+		    '8461I.*successfully',  # AUDIT LIBRARY blah blah success
+		    '8499I',                # request replies
+		    '8799I',                # LABEL LIBVOLUME
+		    '\d{4}I\s+\d+\s+matches\sfound.$',  # Skip run on lines with matches
+		   );
+
+my @ignored_messages = (
+			'Administrator.*issued',           # Skip interactive administator commands.
+			'Command\sscript\s.*\ssuccessfully',  # Skip successful script completions.
+			'QUERY|SELECT',                    # Skip queries and selects.
+			# Skip license information.
+			'operation\sfor.*started',          # Skip operation start messages.
+		       );
+
+my $ignored_loglines = 0;
+my $initial_loglines = 0;
+
+
+my $memoize_state = 0;             # 0 = normal, 1 = save memoize, 2 = use memoize (Don't use unless
+                                   #  you really know what you are doing!)
+
+=head1 NAME
+
+tsm_daily_report - emails daily summaries of Tivoli Storage Manager activity
+
+=head1 SYNOPSIS
+
+tsm_daily_report [options]
+
+Modify the variables at the top of the script and then run it without any arguments.  For daily
+reports, place this script in your crontab.  The following options override variables set in the
+script.  All options may be abbreviated to the shortest unique string.
+
+=head2 Options
+
+=head3 General Options
+
+ --config <filename>        read config values from the specified file (see Config Files below)
+
+ AUTHENTICATION:
+  --admin <id>               the TSM admin id to use
+  --password <password>      the password for the TSM admin
+
+ OUTPUT:
+  --stdout                   only report to stdout
+  --email                    only report via email
+  --txtsave                  only report to the text save file
+
+ SELECTING NODES:
+  --exclude <node>           exclude node from the report (may be specified multiple times)
+  --policy-domain <domain>   includes only selected domains (may be specified multiple times)
+
+     Note:  If you use --policy-domain or the policy_domain config file option you will get _only_
+            the domains you specify.  The default is to include all domains.
+
+ GENERAL:
+  --period <sql query>       specify a period using TSM SQL syntax (like "begind=-1")
+  --transfer-time-max <secs> total transfer time after which we warn about slow clients
+  --dsmadmc <path>           specify the path of the dsmadmc executable
+  --slow-queries             turn slow or iterative queries on
+  --noslow-queries           turn slow or iterative queries off
+  --alter-tsm                turn on (or use --noalter-tsm to turn off) queries that might alter TSM
+  --empty-pri-to-scr         turn on changing empty private volumes into scratch volumes
+
+ DOCUMENTATION:
+  --help                     display usage information
+  --version                  display verison information
+  --man                      display the man page for this script
+
+ EMAIL OPTIONS:
+  --recipient <address>      send to this address
+  --sender <address>         send from this address
+
+=head3 Section Selection Options
+
+Sections can be toggled individually by using these options or by modifying the %sections hash in
+the configuration area of the script.  A section can be disabled by using a "no" ("--foo" is
+disabled with "--nofoo").  Section options are cumulative.
+
+ --no-sections              turns all sections off
+ --all-sections             turns all sections on
+
+ --sec_act_process
+ --sec_admin_schedules
+ --sec_audit_lib
+ --sec_client_schedules
+ --sec_client_summary
+ --sec_db_and_log
+ --sec_drives_and_paths
+ --sec_drm_plans
+ --sec_log_stats
+ --sec_schedule_graph
+ --sec_scratch_volumes
+ --sec_serious_errors
+ --sec_script_information
+ --sec_storage_pools
+ --sec_unusual_logs
+ --sec_volume_information
+ --sec_volume_occupancy
+
+For example to enable just the client summary section regardless of the settings in the script use:
+
+ tsm_daily_report --no-sections --sec_client_summary
+
+Or to disable only the audit library section use:
+
+ tsm_daily_report --all-sections --nosec_audit_lib
+
+Or the use the settings in the script but disable the drm plan section use:
+
+ tsm_daily_report --nodrm_plans
+
+=head3 Special Activity Log Options
+
+Sometimes it's desirable to save the activity log to file and report on it later.  This can be done with these options:
+
+ --process-log-file <filename>          Read from a file instead of using "query actlog"
+ --save-log-file <filename>             Save the log to a file and exit
+ --query-actlog                         Query the activity log
+ --noquery-actlog                       Skip activity log queries
+
+=head3 Debugging Options
+
+When debugging, or possibly to speed up multiple runs of this script, you can save the queries to
+dsmadmc and reuse them.  They will be stored in a database in the current working directoy and used
+on subsequent runs.  This can be useful when combined with the --process-log-file option in order to
+process many saved logs without repeating queries to the server.  It is always safe to delete the
+created query-cache file when you no longer wish to store the queries.  This option requires the
+following additional perl modules: Memoize, GDBM_File, and MLDBM.
+
+ --memoize [0|1]                        Enable/Disable memoizeing queries.
+
+=head3 Config Files
+
+Options may also be specified using a config file.  By default we look for a config file in
+/etc/tsm_daily_report.config but you can specify a file (or multiple files) to read on the command
+line.  If you specify the filename "-" (a single dash) then the config will be read from standard
+input.
+
+The config file is a standard text file that may contain:
+
+    - blank lines
+    - comment lines starting with either # or *
+    - variable settings that start with the word "set"
+    - exclusions for nodes that take the form of "exclude_node <node>", one node per line.
+    - policy domain selections that take the form of "policy_domain <domain>", one domain per line.
+
+Variables can be set by taking the variable name from the script and changing it thusly:
+
+   In Script                               In Config File
+   -------------------------------         ----------------------------------
+   $tsm{alter_tsm} = 1               ->    set tsm->alter_tsm = 1              # Turn on TSM altering queries
+   $email{sender} = "foo@foo.com"    ->    set email->sender = foo@foo.com     # Change the email report sender
+   $sections{db_and_log} = 0         ->    set sections->db_and_log = 0        # Turn off the DB and Log section
+
+You can only set the variables that are used in the configuration of the script; these are all
+hashes in the top of the script that are declared using "our".
+
+An example config file:
+
+   # Configure our TSM server
+   set tsm->server = BIGSERVER
+
+   # Change the output options
+   set email->sender = admin@company.com
+   set output->email = 1
+
+   # Skip a few nodes
+   exclude_node yak
+   exclude_node idiotsmachine
+
+   # Only show these two policy domains
+   policy_domain BIGSERVERS
+   policy_domain IMPORTANTCLIENTS
+
+=head1 AUTHOURS
+
+Written by Patrick Audley <paudley@blackcat.ca> http://blackcat.ca
+
+ Contributions from:
+  David McClelland <David.McClelland@reuters.com>
+  Marcel J.E. Mol <marcel@mesa.nl>
+  Shawn Bierman <BiermanS@methodisthealth.org>
+  Tobias Hofmann <tobias.hofmann@medien.uni-weimar.de>
+  James W. Johnke <jjohnke@yahoo.com>
+  Jason A. Specland <jas2005@med.cornell.edu>
+  Dariusz Pietrzak <eyck@kuszelas.eu>
+
+=head1 BUGS
+
+Please send me any comments, bug reports, suggestions or flame mail :)
+
+=head1 COPYRIGHT
+
+Copyright 2003-2010 by Patrick Audley <paudley@blackcat.ca>
+
+This program is licensed under the terms of the B<GPL>.  If you didn't
+recieve a copy of the license, you can get it from
+http://www.gnu.org/licenses/gpl.html
+
+=cut
+
+#
+# Detect Pod::Usage and use it if found, otherwise grep out the options form the script text
+#
+
+eval "use Pod::Usage;";
+if( $@ ) {
+  # Hmmm..  no Pod::Usage, do something sneaky.
+  eval <<'POD_USAGE_FUDGE';
+sub pod2usage {
+  print STDERR "Failure to load Pod::Usage.  I'll try to run pod2text, if that fails, please read the code instead.\n\n";
+  system("pod2text $0");
+  exit(0);
+}
+POD_USAGE_FUDGE
+}
+
+#
+# Add a node to the exclusion list
+#
+sub exclude_node {
+  my $node = shift;
+  $nodeX{ $node } = 1;
+}
+#
+# Add a policy domain to the inclusion list
+#
+sub include_policy_domain {
+  my $domain = shift;
+  $policyI{ $domain } = 1;
+  $policyIcheck = 1;
+}
+
+
+#
+# Config files should be loaded before the command line but after the script variables
+#
+sub parse_config_file {
+  my ( $filename ) = @_;
+  open( CONFIG, "<$filename" ) or
+    die "Can't open the specified config file: $filename\n";
+  my $line = 0;
+  while( <CONFIG> ) {
+    ++$line;
+    chomp;
+    next if m/^\s*[*\#]|^\s*$/;
+
+    # Check for evilness in strings
+    die "Invalid characters found on line $line of the config file.\n"
+      if m/[^\[\w\s>=_@.\/-]/;
+
+    my $valid_action = 0;
+
+    if( m/^\s*set\s+/ ) {
+      # Setting a variable
+      $valid_action = 1;
+
+      # Strip off the "set"
+      s/\s*set\s+//;
+
+      die "Invalid config file syntax on line $line: $_" unless m/=/;
+      s/\s+=\s+/=/;
+      my ( $key, $val ) = ( m/(^[^=]+)=(.*)/ );
+      # Strip extra spaces
+      $key =~ s/^\s+|\s+$//g;
+      $val =~ s/^\s+|\s+$//g;
+
+      # Check to see if this variable is already defined.  Only accept variable that are declared
+      # above with an "our" and are already defined.
+      if( $key =~ m/->/ ) {
+	# It's a hash, parse out the hash name.
+	$key =~ s/\s+//g;
+	my ($hashname, $hashkey) = ( $key =~ m/(^.*)->(.*)/ );
+	die "You can't have spaces in the setting name on line $line of the config file, sorry.\n"
+	  unless $hashname =~ m/^[A-z0-9_@.\/-]+$/;
+	die "You can't use values that start with perl quote operators (ex: not ^q.?[^\\W]) on line $line of the config file.\n"
+	  if $hashkey =~ m/^q.?[^\w]/;
+	die "You can't see the values of the hash $hashname from the config file, sorry.   Error on line $line.\n"
+	  if ! grep { m/$hashname/ } %::;
+	die "$hashkey isn't a valid variable in $hashname on line $line.\n"
+	  unless eval "defined \$".$hashname."{".$hashkey."};";
+	$key = $hashname."{".$hashkey."}";
+      } else {
+	die "$key isn't a valid config file variable on line $line.\n" unless defined $$key;
+      }
+      $val = "\"".$val."\"" unless $val =~ m/^\d+$/;
+      $val =~ s/([^\\])@/$1\\@/g;
+
+      # Build an eval string
+      my $ev = "\$".$key." = ".$val;
+
+      eval $ev;
+      die "Failed to parse config file on line $line: $@\n" if $@;
+      next;
+    }
+    if( m/^\s*exclude_node\s+/ ) {
+      $valid_action = 1;
+
+      # Strip off the exclude_node bit and trim whitespace
+      s/^\s*exclude_node\s+//;
+      s/^(\S+).*/$1/;
+
+      exclude_node( $_ );
+    }
+    if( m/^\s*policy_domain\s+/ ) {
+      $valid_action = 1;
+
+      # Strip off the policy_domain bit and trim whitespace
+      s/^\s*policy_domain\s+//;
+      s/^(\S+).*/$1/;
+
+      include_policy_domain( $_ );
+    }
+
+    die "Invalid action on line $line of the config file.\n" unless $valid_action;
+  }
+  close( CONFIG );
+}
+parse_config_file( $tsm{config_file} ) if -f $tsm{config_file};
+
+#
+# Special options for testing the script.  Enable extra checking and set options for the
+# maintainer. (Don't change unless you know what this entails)
+#
+sub maintainer_mode {
+  print STDERR " --> enabling maintainer mode.\n";
+#  $output{report_stdout} = 1;
+#  $output{report_email} = 0;
+#  $output{report_txtsave} = 1;
+  $email{sender} = 'tsm@compbio.dundee.ac.uk';
+  $email{recipients} = 'paudley@compbio.dundee.ac.uk';
+  $email{mailhost} = '10.1.255.2';
+  $txtsave{filename} = '/conf/www/tsm_report.txt';
+  $txtsave{errors_filename} = '/conf/www/tsm_errors.txt';
+  $txtsave{actlog_filename} = '/conf/www/tsm_actlog.txt';
+  $tsm{drmdir} = "/grid/zeus2/.TSM/DRM";
+  $tsm{alter_tsm} = 1;
+  $tsm{empty_private_to_scratch} = 1;
+  $tsm{slow_queries} = 1;
+  $tsm{audit_random_volumes} = 3;
+  $format{number_tables} = 1;
+}
+
+
+#
+# Process the command line arguments
+#
+my %opts = (
+	    'admin=s'            => \$tsm{admin},
+	    'alter-tsm!'         => \$tsm{alter_tsm},
+	    'config=s'           => sub{ parse_config_file( $_[1] ) },
+	    'dsmadmc=s'          => \$tsm{dsmadmc},
+	    'email'              => sub{ $output{$_} = 0 for keys %output; $output{report_email} = 1; },
+	    'empty-pri-to-scr!'  => \$tsm{empty_private_to_scratch},
+	    'exclude_node=s'     => sub{ exclude_node( $_[1] ) },
+	    'help'               => sub{ pod2usage(-verbose=>1); },
+	    'maintainer!'        => sub{ maintainer_mode(); },
+	    'man'                => sub{ pod2usage(-exitstatus => 0, -verbose => 2); },
+	    'memoize=i'          => \$memoize_state,
+	    'no-queries!'        => \$tsm{no_queries},
+	    'no-sections!'       => sub{ $sections{$_} = 0 for keys %sections; },
+	    'policy-domain=s'    => sub{ include_policy_domain( $_[1] ); },
+	    'password=s'         => \$tsm{password},
+	    'period=s'           => \$tsm{period},
+	    'process-log-file=s' => sub{ $actlog{load} = 1; $actlog{query} = 0; $actlog{filename} = $_[1]; },
+	    'query-actlog!'      => \$actlog{query},
+	    'recipient=s'        => \$email{recipients},
+	    'save-log-file=s'    => sub{ $actlog{save} = 1; $actlog{query} = 1; $actlog{filename} = $_[1]; },
+	    'sender=s'           => \$email{sender},
+	    'slow-queries!'      => \$tsm{slow_queries},
+	    'stdout'             => sub{ $output{$_} = 0 for keys %output; $output{report_stdout} = 1; },
+	    'transfer-time-max=i'=> \$tsm{transfer_time_max},
+	    'txtsave'            => sub{ $output{$_} = 0 for keys %output; $output{report_txtsave} = 1; },
+	  );
+$opts{ "sec_".$_."!" } = \$sections{$_} for keys %sections;
+pod2usage() unless GetOptions( %opts );
+
+#
+# check for some section depedancies here.
+#
+
+#die "You have selected some sections that depend on the disabled volume_information section.\n"
+#  if( (
+#       $sections{storage_pools} or $sections{scratch_volumes}
+#      ) and ! $sections{volume_information} );
+die "You have selected unusual_logs reporting and need to enable log_stats as well.\n"
+  if( $sections{unusual_logs} and ! $sections{log_stats} );
+my $have_sec = 0; for( keys %sections ) { $have_sec = 1 unless $sections{$_} == 0; };
+die "You haven't selected any sections to report on.\n" unless $have_sec;
+die "You can't enable the audit libraries section unless you have \$tsm{alter_tsm} set to true.\n"
+  if( $sections{audit_lib} and ! $tsm{alter_tsm} );
+
+# Check to see if we have Text::BarGraph and have sec_schedule_graph is enabled
+#eval "use Text::BarGraph;";
+#die "You have selected the \"Schedule Graph\" section but you don't have Text::BarGraph installed from CPAN.\n"
+#  if( $@ && $sections{schedule_graph} );
+
+
+package timegraph;
+use strict;
+use POSIX qw/ceil/;
+
+sub new {
+  my ($class,%args) = @_;
+  my $self = bless {
+		    title => $args{title}           || "Time Graph",
+		    tick => $args{tick}             || 20*60,
+		    time_start => $args{time_start} || die("You must specify a start time (UNIX time format) when creating a timegraph.\n"),
+		    time_end => $args{time_end}     || die("You must specify a end time (UNIX time format) when creating a timegraph.\n"),
+		   }, $class;
+  my %events = ();
+  $self->{events} = \%events;
+  my %legend = ();
+  $self->{legend} = \%legend;
+
+  # Realign the start and end times on tick boundaries
+  my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday) = gmtime( $self->{time_start} );
+  $self->{time_start} -= ( $min % ($self->{tick}/60) ) * 60 + $sec;
+  ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday) = gmtime( $self->{time_end} );
+  $self->{time_end} += (60-$sec);
+  ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday) = gmtime( $self->{time_end} );
+  $self->{time_end} += ( ($self->{tick}/60) - ( $min % ($self->{tick}/60) ) ) * 60;
+
+  $self->{width} = ( $self->{time_end} - $self->{time_start} ) / $self->{tick};
+
+  return $self;
+}
+
+sub event {
+  my ( $self, $key, $start, $end, $event, $char ) = @_;
+  # Normalize events outside of our range...
+  $start = $self->{time_start} if $start < $self->{time_start};
+  $end = $self->{time_end} if $end > $self->{time_end};
+
+  $char = "#" unless defined $char;
+  $self->{events}->{$key} = [] unless defined $self->{events}->{$key};
+  push @{ $self->{events}->{$key} }, [ $start, $end, $event, $char ];
+}
+
+sub title {
+  my ($self, $title) = @_;
+  $self->{title} = $title;
+}
+
+sub legend {
+  my ($self, $key, $val) = @_;
+  $self->{legend}->{$key} = $val;
+}
+
+sub graph {
+  use Data::Dumper;
+  my $self = shift;
+  my $max_label = 0;
+  my $max_size = 0;
+  my @labels = sort keys %{ $self->{events} };
+  my $ret = "";
+
+  $max_label = length($_) > $max_label ? length($_) : $max_label for @labels;
+  $max_size = 1+ $max_label + 2 + $self->{width} + 1;
+
+  $ret .= "  ".("-"x20)."[ ".$self->{title}." ]".("-"x($max_size-24-length($self->{title})))."\n";
+  $ret .= "  ".(" "x($max_label));
+  for( my $ticks = 0; $ticks <= ($self->{width}+3); $ticks++ ) {
+    if( $ticks % 9 == 0 ) {
+      my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday) = gmtime( $self->{time_start} + $ticks*$self->{tick}  );
+      $ret .= sprintf("%02d:%02d",$hour,$min);
+      $ticks += 5;
+    }
+    $ret .= "_";
+  }
+  $ret .= "\n";
+
+  for my $label ( @labels ) {
+    $ret .= sprintf("  %-".$max_label."s |",$label);
+    my @E;
+    push @E, " " for ( 0 .. $self->{width} );
+
+    # Iterate through the events...
+    for my $evt ( @{ $self->{events}->{$label} } ) {
+      my ($start, $end, $tag, $char ) = @{ $evt };
+      for( my $n = $self->{time_start}, my $i = 0; $n <= $self->{time_end}; $n += $self->{tick}, $i++ ) {
+	if( $n > $start && $n <= $end ) {
+	  $E[ $i ] = $char;
+	}
+	elsif ( $start > $n && $start < ( $n + $self->{tick} ) && $end > $n && $end < ( $n + $self->{tick} ) ) {
+	  $E[ $i ] = $char;
+	}
+	elsif ( $start > $n && $start < ( $n + $self->{tick} ) || $end > $n && $end < ( $n + $self->{tick} ) ) {
+	  $E[ $i ] = $char;
+	}
+      }
+    }
+
+    $ret .= $_ for @E;
+    $ret .= "|\n";
+  }
+
+  $ret .= "  ".("-"x$max_size)."\n";
+
+  $ret .= "\n";
+  my @leg = sort keys %{ $self->{legend} };
+  if( @leg ) {
+    $ret .= "   LEGEND:\n";
+    for ( @leg ) {
+      $ret .= sprintf("   %10s => %-60s\n", $_, $self->{legend}->{$_} );
+    }
+    $ret .= "\n";
+  }
+  return $ret;
+}
+
+
+package report;
+use Text::Wrap;
+use strict;
+
+sub new {
+  my ($class,%args) = @_;
+  my $self = bless {
+		    body_indent => $args{body_indent}       || "  ",
+		    debug_tables => $args{debug_tables}     || 0,
+		    initial_indent => $args{initial_indent} || "    ",
+		    wrap_column => $args{wrap_column}       || 80,
+		    _alerts => [],
+		    _bodies => [],
+		    _files => [],
+		    _footer => "",
+		    _headings => [],
+		    _preamble => "",
+		    _tablenum => 1,
+		    _email_available => 1,
+		   }, $class;
+  return $self;
+}
+
+#
+# Creates a preamble: text that appears before the headings.  It will be wrapped.
+#
+sub preamble {
+  my ( $self, $pre ) = @_;
+  $self->{_preamble} .= $pre;
+}
+
+#
+# Create a new heading.  Return the index for use in adding data to this heading.
+#
+sub heading {
+  my ( $self, $title ) = @_;
+  my $ind = scalar @{ $self->{_headings} };
+  push @{ $self->{_headings} }, $title;
+  $self->{_bodies}[$ind] = [];
+  $self->{_tablenum} = 0;
+  return $ind;
+}
+
+#
+# Create a footer for the reports.  (you can only have one)
+#
+sub footer {
+  my ( $self, $footer ) = @_;
+  $self->{_footer} = $footer;
+}
+
+#
+# Add an alert to the report.
+#
+sub alert {
+  my ( $self, $alert ) = @_;
+  push @{ $self->{_alerts} }, $alert;
+}
+
+#
+# These functions add content to the body of a heading.  Use the index returned from heading().
+# -> Add text sections to the body.
+sub add_text_to_body {
+  my ( $self, $index, @text ) = @_;
+  my %t = ( text => \@text );
+  push @{ $self->{_bodies}[$index] }, \%t;
+}
+# -> Add advice sections to the body.
+sub add_advice_to_body {
+  my ( $self, $index, @text ) = @_;
+  my %t = ( advice => \@text );
+  push @{ $self->{_bodies}[$index] }, \%t;
+}
+# -> Add formatted text sections to the body.
+sub add_formatted_text_to_body {
+  my ( $self, $index, $text ) = @_;
+  my %t = ( ftext => $text );
+  push @{ $self->{_bodies}[$index] }, \%t;
+}
+# -> Add a table to the body.  The array ref should point to an array in the format of:
+#   ( ("headind1","heading2",... )
+#     ("row1col1","row1col2",... )
+#     ...
+#   )
+sub add_table_to_body {
+  my ( $self, $index, $array_ref ) = @_;
+  my %t = ( "table" => $array_ref, table_id => $index.":".++$self->{_table_num} );
+  push @{ $self->{_bodies}[$index] }, \%t;
+}
+# -> Add a log event to the body.
+sub add_log_to_body {
+  my ( $self, $index, $log ) = @_;
+  $log =~ s/^(\S+)\s+(\S+)\s+/$1 $2 /;
+  my %t = ( log => $log );
+  push @{ $self->{_bodies}[$index] }, \%t;
+}
+
+#
+# Attach a file to the report.  If we are given a string of data then use that, otherwise try to
+# open the filename given and use it's contents.
+#
+sub attach_file {
+  my ( $self, $filename, $data ) = @_;
+  my %finfo = ( filename => $filename );
+  if( !defined $data ) {
+    warn "Can't open $filename to attach to the report!" unless -f $filename;
+    $finfo{load} = 1;
+  } else {
+    $finfo{load} = 0;
+    $finfo{data} = $data;
+  }
+  push @{ $self->{_files} }, \%finfo;
+}
+
+#
+# Produce a text report
+#
+sub text_report {
+  my ( $self ) = @_;
+  my $txt = "";
+  my $last_was_log = 0;
+
+  # Set wrapping.
+  local $Text::Wrap::columns = $self->{wrap_column};
+  local $Text::Wrap::unexpand = 0;
+
+  # Add the preamble if there is one.
+  $txt .= fill( $self->{initial_indent}, $self->{body_indent}, $self->{_preamble} )."\n\n" if $self->{_preamble} ne "";
+
+  # Iterate through the headings.
+  for my $index ( 0 .. @{ $self->{_headings} } - 1 ) {
+    # Format the title.
+    my $line = my $title .= ($index+1).". ".$self->{_headings}->[$index];
+    $line =~ s/[^_]/_/g;
+    $txt .= $line."\n".$title."\n\n";
+    # Output the body.
+    for my $body_ref ( @{ $self->{_bodies}[$index] } ) {
+      if( defined $body_ref->{text} ) {
+	if( $last_was_log ) { $last_was_log = 0; $txt .= "\n"; }
+	my $para = join("", fill( $self->{initial_indent}, $self->{body_indent}, @{ $body_ref->{text} } ) );
+	chomp $para;
+	$txt .= $para."\n\n";
+      }
+      if( defined $body_ref->{advice} ) {
+	if( $last_was_log ) { $last_was_log = 0; $txt .= "\n"; }
+	my $para = join("", fill( $self->{initial_indent}, $self->{body_indent}, @{ $body_ref->{advice} } ) );
+	chomp $para;
+	$txt .= $para."\n\n";
+      }
+      if( defined $body_ref->{ftext} ) {
+	if( $last_was_log ) { $last_was_log = 0; $txt .= "\n"; }
+	$txt .= $body_ref->{ftext}."\n";
+      }
+      if( defined $body_ref->{table} ) {
+	if( $last_was_log ) { $last_was_log = 0; $txt .= "\n"; }
+	my @data = @{ $body_ref->{table} };
+	my $rows = 0;
+	# Check for empty tables that are generated if we aren't performing queries.
+	if( $data[0][0] eq "unknown" and $data[0][16] eq "unknown" and
+	    $data[1][0] == 0 and $data[1][16] == 0 ) {
+	  next;
+	}
+	# If we are debugging, then include table identifiers in the output.
+	my $tid = $self->{debug_tables} ? $body_ref->{table_id} : "";
+	# Determine the largest cell size for each column.
+	my @colsize = ();
+	for my $row ( 0 .. $#data ) {
+	  my @row = @{ $data[$row] };
+	  for( my $col = 0; $col < @row; $col++ ){
+	    $colsize[$col] = 0 unless defined $colsize[$col];
+	    warn "$tid row $row not defined in section $index during text_report()\n" unless @row;
+	    warn "$tid column $col in row $row not defined in section $index during text_report()\n" unless defined $row[$col];
+	    $colsize[$col] = $colsize[$col] > length( $row[$col] ) ? $colsize[$col] : length( $row[$col] );
+	  }
+	  ++$rows;
+	}
+	# Print the column numbers if we are debugging tables.
+	if( $self->{debug_tables} ) {
+	  $txt .= $self->{body_indent};
+	  for( my $col = 0; $col < @colsize; $col++ ) {
+	    my @row = ( 0..$#colsize );
+	    $txt .= sprintf("%-".$colsize[$col]."s ", defined $row[$col] ? $row[$col] : "_" );
+	  }
+	  $txt .= " ($tid)\n";
+	}
+
+	# Print the headers
+	$txt .= $self->{body_indent};
+	for( my $col = 0; $col < @colsize; $col++ ) {
+	  my @row = @{ $data[0] }; $txt .= sprintf("%-".$colsize[$col]."s ", defined $row[$col] ? $row[$col] : "_" );
+	}
+	$txt .= "\n";
+
+	# Print the seperators
+	$txt .= $self->{body_indent};
+	for( my $col = 0; $col < @colsize; $col++ ) { $txt .= "-" for 1 .. $colsize[$col]; $txt .= " "; }
+	$txt .= "\n";
+
+	# Print the data
+	for( my $row = 1; $row < $rows; $row++ ) {
+	  $txt .= $self->{body_indent};
+	  for( my $col = 0; $col <= $#colsize; $col++ ) {
+	    my @row = @{ $data[$row] };
+	    $row[$col] = "" unless defined $row[$col];
+	    my $align = $row[$col] =~ m/^\s*[\d\-\+].*(?:[PTGMK]B$|\s+[PTGMK]|$)|N\/A/ ? "" : "-";
+	    $txt .= sprintf("%".$align.$colsize[$col]."s ", $row[$col] );
+	  }
+	  $txt .= "\n";
+	}
+	$txt .= "\n";
+      }
+      if( defined $body_ref->{log} ) {
+	$last_was_log = 1;
+	$txt .= $self->{initial_indent}.$body_ref->{log}."\n";
+      }
+    }
+    $txt .= "\n";
+  }
+  $txt .= "\n\n".$self->{_footer}."\n" if $self->{_footer} ne "";
+  return $txt;
+}
+
+#
+# Send the report in email.
+#
+sub email_report {
+  my ( $self, $mailfrom, $mailto, $mailhost, $compress_attachments ) = @_;
+
+  # Check to see if we have compression.
+  eval "use Compress::Zlib;";
+  if( $@ ) {
+    eval "sub Compress::Zlib::memGzip {};";
+    warn <<'WARN_COMPRESS';
+Disabling compressed attachments, please install Compress::Zlib or unset $email{compress_attachments}.
+WARN_COMPRESS
+    $compress_attachments = 0;
+  }
+
+  # Check for MIME::Lite
+  eval "use MIME::Lite;";
+  if( $@ ) {
+    eval "sub MIME::Lite::new { return bless {}, ref ($_[0]) || $_[0]; };";
+    eval "sub MIME::Lite::AUTOLOAD {};";
+    warn <<'WARN_MIMELITE';
+Email reporting selected but MIME::Lite not found, unset $output{email} if this is what you want.
+WARN_MIMELITE
+    print $self->text_report();
+    die "\n";
+  }
+
+  my $alerts = ""; $alerts .= " ($_)" for @{ $self->{_alerts} };
+  my $msg = MIME::Lite->new(
+		    From    => $mailfrom,
+			    To      => $mailto,
+			    Subject => "TSM Report $tsm{server}".$alerts,
+			    Type    => 'multipart/mixed'
+			   );
+  $msg->attach( Type => "TEXT", Data => $self->text_report() );
+
+  for my $file_ref ( @{ $self->{_files} } ) {
+    my %mopts = (
+		 Type => $compress_attachments ? "application/x-gzip" : "text/plain",
+		 Encoding => $compress_attachments ? "base64" : "binary",
+		 Disposition => 'attachment',
+		 Filename => $file_ref->{filename},
+		);
+    $mopts{Filename} =~ s/.*\///g;  # strip paths from filename.
+    if( $file_ref->{load} ) {
+      open( DATA, "< ".$file_ref->{filename} ) and do {
+	$mopts{Data} = join( "", <DATA> );
+	close( DATA );
+      };
+    } else {
+      $mopts{Data} = $file_ref->{data};
+    }
+    if( $compress_attachments ) {
+      $mopts{Data} = Compress::Zlib::memGzip( $mopts{Data} );
+      $mopts{Filename} =~ s/$/.gz/ unless $mopts{Filename} =~ m/.gz$/;
+    }
+    $msg->attach( %mopts );
+  }
+
+  MIME::Lite->send('smtp', $mailhost, Timeout=>60) unless $mailhost eq "";
+  $msg->send();
+}
+
+package tsmclient;
+use strict;
+
+my $no_queries;
+
+sub new {
+  my ($class,%args) = @_;
+  my $self = bless {
+		    dsmadmc => $args{dsmadmc}           || die("You must specify a path to dsmadmc.\n"),
+		    admin_id => $args{admin_id}         || "admin",
+		    admin_pw => $args{admin_pw}         || "admin",
+		    memoize_queries => $args{memoize}   || 0,
+		    no_queries => $args{no_queries}     || 0,
+		    show_queries => $args{show_queries} || 0,
+		   }, $class;
+  $self->{_last_output} = "";
+  $self->{_last_full} = "";
+  $self->{_last_table} = [];
+  if( $self->{memoize_queries} ) {
+    eval <<'FOO';
+use Memoize;
+use GDBM_File;
+use MLDBM qw(GDBM_File);
+use Fcntl;
+tie my %cache => "MLDBM", "tsm_daily_report.query_cache", O_CREAT|O_RDWR, 0666 or die "Can\'t open GDBM file. ";
+memoize "raw_query", LIST_CACHE => [HASH => \%cache];
+$self->{_memoize_cache} = \%cache;
+print STDERR " --> query memoize active.\n";
+FOO
+    die "Can't enable memoize: $@\n" if $@;
+  }
+  $no_queries = $self->{no_queries};
+  return $self;
+}
+
+sub raw_query {
+  my ( $full_query ) = @_;
+  return ("queries suppressed") if $no_queries;
+  open( DSM, "$full_query|") || die "Can't run dsmadmc";
+  my @ret = <DSM>;
+  close( DSM );
+  return @ret;
+}
+
+sub query {
+  my ( $self, $query, $opts, $reduce_whitespace ) = @_;
+  $opts = "" unless defined $opts;
+  $reduce_whitespace = 0 unless defined $reduce_whitespace;
+  my @full = ( "\n\n---------[ query: $query ]---------\n" );
+  my @ret = ();
+  my $state = 0;
+  my $q = $self->{dsmadmc}."--servername=$tsm{server} -id=".$self->{admin_id}." -password=".$self->{admin_pw}." $opts \"$query\"";
+  print $q, "\n" if $self->{show_queries};
+  my @a = raw_query( $q );
+  for( my $i = 0; $i < $#a; $i++ ) {
+    local $_ = $a[$i];
+    next if m/^$/ and $reduce_whitespace;
+    s/\s*$/\n/;
+    push @full, $_;
+    # Look for the start of the server output.
+    if( $state == 0 && m/Server command/ ) {
+      $state = 1;
+      # Eat the next two lines.
+      $_ = $a[++$i];
+      s/\s*$/\n/;
+      push @full, $_;
+      if( m/^\s*$/ ) {
+	$_ = $a[++$i];
+	s/\s*$/\n/;
+	push @full, $_;
+      }
+    }
+    next if $state == 0;
+    # Look for the end of the interesting bits.
+    $state = 2 if $state == 1 && m/^AN/;
+    # Save the interesting bits
+    s/ +/ /g if $reduce_whitespace;
+    push @ret, $_ if $state == 1;
+  }
+  close( DSM );
+  $self->{_last_output} = \@ret;
+  $self->{_last_full} = \@full;
+  return @ret;
+}
+
+sub query_as_table {
+  my ( $self, $query, $col_array_ref ) = @_;
+  if( $self->{no_queries} ) {
+    # If we don't have queries enabled then return a really large table of one row.  This prevents
+    # warnings about uninitialized variables.
+    return [ [ qw/unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown unknown/ ],
+	     [ qw/0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0/ ],
+	   ];
+  }
+  my @out = $self->query( $query, "-Displaymode=LIST", 0 );
+  $col_array_ref = [] unless defined $col_array_ref;
+  my ( $col, $ind ) = ( 0, 1 );
+  my @table = ();
+  return [] unless @out;
+  my @lines = grep { m/^\s*$|:\s+/ } @out;  # grep out any lines that aren't blank or contain ": "
+  chomp @lines;
+  shift @lines while $lines[0] =~ m/^\s*$/;  # remove blanks at the beginning
+  pop @lines while $lines[ $#lines ] =~ m/^\s*$/; # remove blanks at the end
+  for( @lines ) {
+    s/\s+/ /g;
+    s/^\s+|\s+$//g;
+    s/:$/: NULL/g;
+    s/\/$//;
+    unless( m/:/ ) { ++$ind; $col = 0; next; }
+    my ( $key, $val ) = ( m/([^:]*):\s*(.*)/ );
+    $col_array_ref->[$col] = $key unless defined $col_array_ref->[$col];
+    $table[$ind] = () unless defined $table[$ind];
+    $table[$ind][$col] = $val;
+    ++$col;
+  }
+  # Add the headings.
+  $table[0] = ();
+  for( my $i = 0; $i < @{ $col_array_ref }; $i++ ) { $table[0][$i] = $col_array_ref->[$i]; }
+  $self->{_last_table} = \@table;
+  @table = grep { defined } @table; # Filter out undefs
+  return \@table;
+}
+
+#
+# Run a query and pull out all the colums into a hash keyed to one of the columns.
+# Where:
+#
+#  $hash_ref   is a hash ref to where you want the results added
+#  $query      is the dsmadmc query
+#  $key        is the (zero based) column that holds the key
+#  $fields     is an array ref of a list of fields to import into the hash (Order is important)
+#  $debug      prints out the array as it's processed if true, defaults to false.
+#
+# Example:
+#
+# %foo = ();
+# query_into_hash( \%foo, "query path", 2, [ qw/src_name src_type dest_name dest_type online/ ] )
+#
+#  Where query path returned:
+#
+#     Source Name     Source Type     Destination     Destination     On-Line
+#                                     Name            Type
+#     -----------     -----------     -----------     -----------     -------
+#     TSM             SERVER          ARCH_LTO        LIBRARY         Yes
+#     TSM             SERVER          DRIVE01         DRIVE           Yes
+#
+#  Would give you something like:
+#
+#   %foo = ( 'ARCH_LTO' => { src_name => 'TSM', src_type => 'SERVER',
+#                            dest_name => 'ARCH_LTO', dest_type => 'LIBRARY',
+#                            online => 'Yes' },
+#            'DRIVE01' => { src_name => 'TSM', src_type => 'SERVER',
+#                           dest_name => 'DRIVE01', dest_type => 'DRIVE',
+#                           online => 'Yes' },
+#          );
+#
+sub query_into_hash {
+  my ( $self, $hashr, $query, $key, $fields, $debug ) = @_;
+  $debug = 0 unless defined $debug;
+  my @Q = @{ $self->query_as_table( $query ) };
+  my @fields = @{ $fields };
+  for( 1..$#Q ) {
+    my $n = 0;
+    my $keyv = $Q[$_][$key];
+    for( @{ $Q[$_] } ) {
+      $hashr->{$keyv}{ $fields[$n++] } = $_;
+      print "$keyv: ".$fields[$n-1]." -> $_\n" if $debug;
+    }
+  }
+}
+
+sub last_table {
+  my $self = shift;
+  return @{ $self->{_last_table} };
+}
+sub last_full {
+  my $self = shift;
+  return @{ $self->{_last_full} };
+}
+
+package main;
+
+my $R = new report(
+		   initial_indent => $format{initial_indent},
+		   body_indent => $format{body_indent},
+		  );
+$R->{debug_tables} = 1 if $format{number_tables};
+$R->footer( "[ produced by tsm_daily_report v".sprintf( "%.1f", $version )." by Patrick Audley <paudley\@blackcat.ca> ]" );
+my $T = new tsmclient(
+		      dsmadmc => $tsm{dsmadmc},
+		      admin_id => $tsm{admin},
+		      admin_pw => $tsm{password},
+		      memoize => $memoize_state,
+		      no_queries => $tsm{no_queries},
+		      show_queries => $format{show_queries},
+		     );
+my $period = $tsm{period};
+my %debug = ();
+
+#
+#  Summarize_repeats() will reduce an array of messages by suppressing repeated elements.  It will
+#  add a message to the ended of repeating elements to indicate how frequent they were.  This
+#  function will preserve frequency if called multiple times with the same array (but possibly
+#  s///'ed elements.
+#
+#  For example:
+#
+#     my @t = (
+#              "foo is a boo",
+#              "foo is a boo",
+#              "foo is a baz",
+#              "I have a bar of soap",
+#             );
+#     my @a = summarize_repeats( @t );
+#     print $_,"\n" for @a;
+#     print "--\n";
+#     print $_,"\n" for summarize_repeats( map { s/baz/boo/; } @a );   # Make baz into boo, generating more similar lines.
+#
+#  Would produce:
+#
+#   I have a bar of soap
+#   foo is a baz
+#   foo is a boo (repeated 2 times)
+#   --
+#   I have a bar of soap
+#   foo is a boo (repeated 3 times)
+#
+sub summarize_repeats {
+  my @ret = @_;
+  my %uniqcount = ();
+  my %uniqlines = map {
+    my $i = $_;
+    $i =~ s/^[\d\/]+\s+[\d:]+\s+//;
+    $uniqcount{$i} = 0 unless defined $uniqcount{$i};
+    if( $i =~ m/ \(repeated (\d+) times\)/ ) {
+      my $m = $1;
+      $i =~ s/ \(repeated \d+ times\)//;
+      $_ =~ s/ \(repeated \d+ times\)//;
+      $uniqcount{$i} += $m;
+    } else {
+      ++$uniqcount{$i};
+    }
+    $i, $_
+  } @ret;
+  @ret = sort map {
+    my $x = $uniqlines{$_};
+    $x .= " (repeated ".$uniqcount{$_}." times)" if $uniqcount{$_} > 1;
+    $x;
+  } keys %uniqlines;
+  return @ret;
+}
+
+my $section = 0;
+my $title = "";
+
+#
+# to_megabytes and to_terabytes are small utility functions that convert storage units
+#
+sub to_megabytes {
+  local $_ = shift;
+  $_ = 0 unless defined $_;
+  s/,//g;
+  $_ .= " MB" unless m/\s+.B/;
+  my ($val,$unit) = split( /\s+/, $_ );
+  $val = $val/1024/1024 if $unit eq ".B";
+  $val = $val/1024      if $unit eq "kB";
+  $val = $val*1         if $unit eq "MB";
+  $val = $val*1024      if $unit eq "GB";
+  $val = $val*1024*1024 if $unit eq "TB";
+  return $val;
+}
+sub to_terabytes { return to_megabytes( shift ) / 1024 / 1024; }
+
+#
+# to_unixtime converts from TSM formated time to seconds since the epoch.
+#
+sub to_unixtime {
+  use Carp;
+  my $str = shift;
+  Carp::confess() unless defined $str;
+  $str =~ s/^\s+|\s+$//g;
+  $str =~ s/\s+/ /g;
+  my( $year, $month, $day, $hour, $min, $sec ) = split( /[:\s\/-]/, $str );
+  return 0 if $year =~ m/none/i;
+  # Adjust for mktime format
+  if( $year < 100 ) {
+    $year += 2000 if $year < 100;
+    my $t = $month;
+    $month = $day;
+    $day = $t;
+  }
+  $year -= 1900;
+  --$month;
+  return POSIX::mktime( $sec, $min, $hour, $day, $month, $year );
+}
+
+#
+# We extract some data that we use in multiple passes, declare that data here.
+#
+my @libraries;
+my %clients = ();
+my %volumes = ();
+my %server = ();
+my $first_log_line = "";
+my $last_log_line = "";
+
+#
+# Deal with the activity log.
+#
+my @actlog = ();
+my @actlog_raw = ();
+{
+  if( $actlog{query} ) {
+    @actlog_raw = $T->query( "q actlog $period" );
+  }
+  if( $actlog{save} ) {
+    open(OUT,">".$actlog{filename}) or die "Can't open $actlog{filename} for log saving.";
+    print OUT @actlog_raw;
+    close(OUT);
+    exit;
+  }
+  if( $actlog{load} ) {
+    open(IN,"<".$actlog{filename}) or die "Can't open $actlog{filename} for log loading.";
+    local $/ = undef;
+    my $tmp = <IN>;
+#    my $tmp; read( IN, $tmp, 10000000 );
+    close(IN);
+    @actlog_raw = split(qr/\n/,$tmp);
+  }
+  #
+  # This block of code has been extensively optimized and might no longer be readable.  It is
+  # designed to:
+  #
+  #  - merge wrapped lines (for example: 03,04,05 are the same entry)
+  #  - filter out some possible continuation characters (the "-" on 12)
+  #  - remove excess whitespace (s/\s+//g)
+  #  - ignore a regexp of entries that are useless
+  #  - count the number of entries (not lines) filtered out.
+  #
+  # Example:
+  #     ==========[start log]==============================================================
+  #  01 Date/Time                Message
+  #  02 --------------------     ----------------------------------------------------------
+  #  03 11/14/03   12:09:01      ANR9999D sstrans.c(5708): ThreadId<25> Actual:
+  #  04                           Magic=53454652, SrvId=0, SegGroupId=28253014, SeqNum=12,
+  #  05                           converted=F.
+  #  06 11/14/03   12:09:01      ANR9999D sstrans.c(5722): Abort
+  #  07 11/14/03   12:09:01      ANR1165E Data-integrity error detected for file in storage
+  #  08                           pool COMPBIO: Node PIG1, Type Backup, File space
+  #  09                           /bioinformatics/pig1, fsId 3, File name
+  #  10                           /home/dmamartin/public_html/gotcha/gotcha/mal13p1.159/
+  #  11                           go_fb.blast.
+  #  12 11/14/03   12:09:01      ANR3521W GENERATE BACKUPSET: Data storage retrieve stor-
+  #  13                           age pool restore failed - data integrity error detected.
+  #     ==========[end log]===============================================================
+  {
+    # Build an optimized regexp.
+    ( my $ignore_opt = join("|",@ignored_messages).'|:\d\d\s+ANR(?:'.join("|",@ignored_anrs).")" ) =~ s/\([^?]/(?:/g;
+    $ignore_opt = eval "qr/$ignore_opt/o";
+
+    my $line = "";
+    my $leadin = 2;
+    for( @actlog_raw ) {
+      next if $leadin-- > 0;
+      chomp;
+      if( m/^\d+/ ) {
+	push @actlog, $line unless $line eq "";
+	$line = $_;
+	next;
+      }
+      s/-$//;
+      $line .= $_;
+    }
+    push @actlog, $line unless $line eq "";
+    $first_log_line = $actlog[0];
+    $last_log_line = $actlog[-1];
+
+    $initial_loglines = scalar @actlog;
+    @actlog = grep { s/\s+/ /g; ! m/$ignore_opt/ } @actlog;
+    $ignored_loglines = ( $initial_loglines - scalar @actlog );
+  }
+}
+
+my $select_ts = qr/^(\S+\s+\S+)\s+.*/;
+$first_log_line =~ s/$select_ts/$1/;
+$last_log_line =~ s/$select_ts/$1/;
+my $G = new timegraph( time_start => to_unixtime($first_log_line), time_end => to_unixtime($last_log_line) );
+
+sub remove_from_actlog {
+  my $key = shift;
+  my @ret = map{ m/$key/ ? do { my $x = $_; $_ = undef; $x; } : (); } @actlog;
+  @actlog = grep{ defined $_ } @actlog;
+  return @ret;
+}
+
+
+my @errors = ();
+my $err_section = -1;
+
+sub alert {
+  my ( $alert, $text, $foundtext ) = @_;
+  $text = $foundtext if $text eq "SAME";
+  $foundtext .= " (see \"$section. $title\" section for more detail)" if $title ne "";
+  $R->alert( $alert );
+  $R->add_log_to_body( $err_section, $foundtext ) if $err_section >= 0;
+  $R->add_log_to_body( $section, ">ALERT< ".$text ) if $text ne "";
+}
+
+sub report_error {
+  my ( $regexp, $alert, $text ) = @_;
+  my @err = remove_from_actlog( $regexp );
+  if( @err ) {
+    $R->alert( $alert );
+    $R->add_log_to_body( $err_section, (scalar @err)." ".$text ) if $err_section >= 0;
+  }
+  push @errors, @err;
+  return @err;
+}
+
+#
+# Search the actlog for a regexp that indicates an error.  If found we report it in the errors
+# section as well as displaying it in the current section.  We return the errors found.
+#
+sub search_for_errors {
+  my ( $regexp, $alert, $found, $errtext ) = @_;
+  if( $title ne "" ) { $errtext .= " (see \"$section. $title\" section for more detail)"; }
+  my @err = report_error( $regexp, $alert, $errtext );
+  if( @err ) {
+    $R->add_log_to_body( $section, "\n" );
+    $R->add_text_to_body( $section, $found );
+    $R->add_log_to_body( $section, " -> $_" ) for @err;
+  }
+  return @err;
+}
+
+
+#
+# Parse out some log events first and create the pids hash.  Some pids are only checked for
+# completion in sections below.  We try to grab most process start messages here and leave the
+# process end messages to the individual sections.
+#
+my %pids = ();
+{
+  for( remove_from_actlog( qr/ANR(?:098[47]|1(?:0(?:0[01]|4[01])|210)|2280)I/ ) ) {
+    # Skip 0984I messages that mention backup storage pool, we get the 1210 message instead
+    # .. and migrations with 1000I
+    next if m/0984I.*(?:backup storage pool|migration)/i;
+    # Same for db backups and 2280
+    next if m/2280I.*database backup/i;
+    # Skip licence lines...
+    next if m/licenses/i;
+
+    my ( $ts ) = ( m/$select_ts/ );
+    my ( $pid ) = ( m/process\s+(\d+)/i );
+    # If we don't have a pid then we might be able to use the volume name as key.
+    ( $pid ) = ( m/volume\s+([A-z0-9_-]+)[\s,.]/ ) unless defined $pid;
+    my ( $pool ) = ( m/pool\s+(\S+)[\s.]/ );
+    my ( $srcpool, $dstpool ) = ( m/storage pool (\S+)\s+.*storage pool (\S+)\s+/i );
+    die $_ unless defined $ts;
+    die $_ unless defined $pid;
+    $pool = "" unless defined $pool;
+    $srcpool = "snone" unless defined $srcpool;
+    $dstpool = "dnone" unless defined $dstpool;
+
+    if( m/ANR(?:0984|1(?:000|040|210)|2280)I/ ) {
+      $pids{$pid} = [] unless defined $pids{$pid};
+      push @{ $pids{$pid} }, { ts => $ts, pool => $pool, srcpool => $srcpool, dstpool => $dstpool, pid => $pid, line => $_ };
+      next;
+    }
+    if( m/ANR(?:0987|1001|1041)I/ ) {
+      if( ! defined $pids{$pid} ) {
+        $debug{parselog_orphan} = [] unless defined $debug{parselog_orphan}; push @{$debug{parselog_orphan}},$_;
+	next;
+      }
+      my $pidr = shift @{ $pids{$pid} };
+      my $ts1 = to_unixtime( $pidr->{ts} );
+      my $ts2 = to_unixtime( $ts );
+      if( m/AUDIT VOLUME/ ) {
+	$G->event("audit:vol",$ts1,$ts2,"audit","a");
+	$G->legend( "a", "audit volumes" );
+	next;
+      }
+      if( m/EXPIRE INVENTORY/ ) {
+	$G->event("expireinv",$ts1,$ts2,"expire inventory","e");
+	$G->legend( "e", "expire inventory" );
+	next;
+      }
+      if( m/MIGRATION/i ) {
+	$G->event("mig:".$pidr->{pool},$ts1,$ts2,"storage pool migration","m");
+	$G->legend( "m", "storage pool migration" );
+	next;
+      }
+      if( m/reclamation/i ) {
+	$G->event("reclaim",$ts1,$ts2,"reclamation","r");
+	$G->legend( "r", "storage pool reclamation" );
+	next;
+      }
+      $debug{parselog_unhand} = [] unless defined $debug{parselog_unhand}; push @{$debug{parselog_unhand}},$_;
+      next;
+    }
+  }
+}
+
+
+#
+# Sections that need %clients should call this to populate it.
+#
+my $have_clients = 0;
+sub need_clients {
+  return if $have_clients;
+
+  # Mine the nodes table for client data
+  $T->query_into_hash( \%clients, "select * from nodes", 0,
+		       [ qw/node platform domain pwset_time bad_pw contact compress archdel backdel locked
+			    last_acc reg_time reg_admin lastsess_comm lastsess_recvd lastsess_sent lastsess_duration
+			    lastsess_idlewait lastsess_commwait lastsess_mediawait client_ver client_rel client_level
+			    client_sublevel client_oslevel option_set aggr url nodetype passexp keep_mp max_mp
+			    auto_fs_rename validate tcp_name tcp_address guid/ ] );
+
+  # Mine the events table
+  $T->query_into_hash( \%clients, "q event * * type=client $period", 3,
+		       [ qw/sched_start sched_actual sched_name node sched_status/ ] );
+
+  # Mine the associations table
+  $T->query_into_hash( \%clients, "select * from associations", 2,
+		       [ qw/assoc_domain assoc_schedule node assoc_chgtime assoc_chgadmin/ ] );
+
+  # Translate some of the timestamps to unix time for later use.
+  for( keys %clients ) {
+    $clients{$_}{last_acctime_unix} = to_unixtime( $clients{$_}{last_acc} );
+  }
+
+  $have_clients = 1;
+}
+
+
+#
+# Sections that need %server should call this to populate it.
+#
+my $have_server = 0;
+sub need_server {
+  return if $have_server;
+  $T->query_into_hash( \%server, "query status", 0,
+			 [ qw/name ip tcpip_port url crossdef passwd_set inst_date restart_date
+                              authentication pw_exp_period badpw min_pw_len web_adm_auth_to
+                              registration subfile availability accounting actlog_retention
+                              actsummary_retension license_audit_period last_lic_audit
+                              lic_compliance central_sched max_sess max_sched_sess event_retention
+                              client_act_duration sched_rand query_sched max_cmd_retries
+                              retry_period sched_modes log_mode dbbackup_trigger bufpoolsize
+                              act_recv conf_mgr refresh last_refresh context server_free
+                              server_free_batch/ ] );
+  # Collapse server hash
+  %server = %{ $server{ (keys %server)[0] } };
+  # Provide the current server time in two formats
+  my @Q = @{ $T->query_as_table("select current_time,current_date from status") };
+  $server{current_datetime} = $Q[1][1]." ".$Q[1][0];
+  $server{current_unixtime} = to_unixtime( $server{current_datetime} );
+
+  $have_server = 1;
+}
+
+
+#
+# Add a preamble with server and report information.
+#
+{
+  need_server();
+  my ( $server, $rdate ) = ( $server{name}, scalar localtime() );
+  $R->preamble( <<PREAMBLE );
+
+  --- TSM Daily Report for server $server ---
+  generated on: $rdate
+  server time: $server{current_datetime}
+PREAMBLE
+}
+
+# Build the list of libraries for later use.
+{
+  my @Q = @{ $T->query_as_table( "query library" ) };
+  shift @Q; # remove the headers
+  push @libraries, $_->[0] for @Q;
+}
+
+#
+#  Check for some of the more serious errors first
+#
+if( $sections{serious_errors} ) {
+  $section = $R->heading( "Serious Errors" );
+  $err_section = $section;
+  report_error( qr/:\d\d\sANR1165E/, "data-integrity errors!", "data integrity errors found!" );
+  report_error( qr/:\d\d\s(?:ANR9999D|(?!AN))/, "process-exception errors!", "lines detailing process exceptions found!" );
+  report_error( qr/:\d\d\sANR1257W/, "damaged files detected!", "damaged files were found!" );
+  report_error( qr/:\d\d\sANR2316W/, "audit deleted files!", "files have been removed by an audit process!" );
+  report_error( qr/:\d\d\sANR29(?:40|0[89])E/, "sql errors","sql errors were found." );
+  report_error( qr/:\d\d\sANR82(?:16|90)W/, "comm errors!","communication errors were detected." );
+
+  sub volume_report {
+    my ( $regexp, $alert, $volmsg, $volaction, $volcat ) = @_;
+    my @volrep = remove_from_actlog( $regexp );
+    if( @volrep ) {
+      $R->alert( $alert );
+      for( @volrep ) {
+	my ($volume) = ( m/volume\s(\S+):/i );
+	++$volumes{$volume}{$volcat};
+      }
+      for( keys %volumes ) {
+	substr( my $action = $volaction, 0, 1 ) =~ tr [a-z] [A-z];
+	$R->add_log_to_body( $section, "$action found $volmsg on volume $_." ) if $volumes{$_}{$volcat} > 0;
+      }
+      $R->add_log_to_body( $section, (scalar @volrep)." $volmsg were found during $volaction." );
+      push @errors, @volrep;
+    }
+  }
+  volume_report( qr/:\d\d\sANR2317W/, "audit found errors!", "errors", "an audit", "audit_error" );
+  volume_report( qr/:\d\d\sANR2308W/, "audit deleted files!", "damaged files", "an audit", "audit_removed" );
+  volume_report( qr/:\d\d\sANR3529W/, "damaged files skipped!", "damaged files", "a generate backupset command", "file_errors" );
+}
+
+
+#
+#  Check the client schedules
+#
+if( $sections{client_schedules} ) {
+  need_clients();
+
+  $title = "Client Schedules";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<CLIENT_SCHED );
+Client schedules are listed below.  Make sure that all the nodes
+you think are being backed up are listed and note any failures.
+CLIENT_SCHED
+
+  # List the schedules.
+  my @Q1 = ( [ "Node", "Scheduled", "Actual", "Schedule Name", "Policy Domain", "Status" ] );
+  my @nosched = ();
+  my @missed = ();
+  for( sort keys %clients ) {
+    next if defined $nodeX{$_};
+    next if $policyIcheck && !defined $policyI{$clients{$_}{domain}};
+    if( !defined $clients{$_}{sched_name} and defined $clients{$_}{assoc_schedule} ) {
+      $clients{$_}{sched_name} = $clients{$_}{assoc_schedule};
+      $clients{$_}{sched_start} = "none";
+      $clients{$_}{sched_actual} = "none";
+      $clients{$_}{sched_status} = "Not Scheduled Yet";
+    }
+    if( defined $clients{$_}{sched_name} ) {
+      push @Q1, [ $_,
+		  $clients{$_}{sched_start},
+		  $clients{$_}{sched_actual} eq "NULL" ? "Missed" : $clients{$_}{sched_actual},
+		  $clients{$_}{sched_name},
+		  $clients{$_}{domain},
+		  $clients{$_}{sched_status},
+		];
+      $G->event( $_, to_unixtime( $clients{$_}{sched_start} ), to_unixtime( $clients{$_}{sched_start} ) + 1, "schedule", "!" );
+      push @missed, $_ if $clients{$_}{sched_status} =~ m/missed/i;
+    } else {
+      push @nosched, $_;
+    }
+  }
+  $G->legend("!","start of schedule");
+  $R->add_table_to_body( $section, \@Q1 );
+
+  for( @nosched ) {
+    next if defined $nodeX{$_};
+    next if $policyIcheck && !defined $policyI{$clients{$_}{domain}};
+    alert( "unscheduled nodes", "SAME", "There is no schedule associated with node $_." );
+  }
+
+  for( @missed ) {
+    next if defined $nodeX{$_};
+    next if $policyIcheck && !defined $policyI{$clients{$_}{domain}};
+    alert( "missed schedule:$_", "SAME", "A client schedule was missed for node $_." );
+    if( $tsm{search_log_if_missed} ) {
+      $R->add_text_to_body( $section, "!! The node \"$_\" missed it's scheduled backup.  Below are the log entries concerning it.
+    ------[ begin log ]-----\n".$format{body_indent}.join( "\n".$format{body_indent}, grep { m/$_/ } @actlog )."\n    ------[ end log ]-----\n" );
+    }
+  }
+  $R->add_log_to_body( $section, $_."\n" ) for remove_from_actlog( qr/:\d\d\sANR2510I/ );
+
+  my @refused_nodes = sort keys %{ { map { s/.*for node\s+(\S+).*/$1/; $_, 1 } remove_from_actlog( qr/ANR0422W/ ) } };
+  if( @refused_nodes ) {
+    alert( "refused nodes",
+	   "The following nodes were refused access: ".join(", ",@refused_nodes) );
+  }
+
+  my @added_nodes = sort keys %{ { map { s/.*Node\s+(\S+)\s+registered/$1/; $_, 1 } remove_from_actlog( qr/ANR2060I/ ) } };
+  if( @added_nodes ) {
+    $R->add_formatted_text_to_body( $section,
+				    "    The following nodes were created on the server:\n         ".
+				    join( "\n         ", @added_nodes )."\n" );
+  }
+
+  # Check for any nodes that haven't contacted the server in the last $tsm{contact_days}.
+  #    (idea from: David McClelland <David.McClelland@reuters.com>)
+  my $contact_tolerance = 60*60*24*$tsm{contact_days};
+  my $old_node = 0;
+  for( sort keys %clients ) {
+    next if defined $nodeX{$_};
+    next if $policyIcheck && !defined $policyI{$clients{$_}{domain}};
+    my $delta = $server{current_unixtime} - $clients{$_}{last_acctime_unix};
+    if( $delta > $contact_tolerance ) {
+      $R->add_log_to_body( $section, "$_ hasn't contacted the server in ".floor($delta/(60*60*24))." days!" );
+      $old_node = 1;
+    }
+  }
+  alert("wayward nodes","","Wayward nodes that haven't contacted the server in a while have been found." ) if $old_node;
+
+  # Check for terminated idle nodes
+  my @idlet_nodes = sort keys %{ { map { s/.*node\s+(\S+)\s+.*/$1/; $_, 1 } remove_from_actlog( qr/ANR0481W/ ) } };
+  if( @idlet_nodes ) {
+    alert( "idle killed nodes",
+	   "The following nodes were terminated after being idle:\n      ".join( "\n      ", @idlet_nodes )."\n",
+	   "The following nodes were terminated after being idle: ".join(", ",@idlet_nodes) );
+  }
+}
+
+
+#
+# More information about the clients.
+#
+if( $sections{client_summary} ) {
+  need_clients();
+
+  $title = "Client Summary";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<CLIENT_SUMMARY );
+Have a quick look over these and make sure they happen at the
+frequency and time that you want them to.
+CLIENT_SUMMARY
+
+  # Build the summary.
+  my %summary = ();
+  my @table = ( [ "Node", "Inspect", "BackedUp", "Restore", "Update", "Archive", "Rebound", "Delete", "Expire", "Fail", "Xfer", "Data Mins.", "Total Mins.", "Compr." ] );
+  my $cnode = 1;
+  my %nodes;
+  my %cfields = ( inspected => 1, 'backed up' => 2, restored => 3, updated => 4, archived => 5, rebound => 6, deleted => 7, expired => 8, failed => 9, transferred => 10, dtime => 11, ttime => 12, compress => 13 );
+
+  for( remove_from_actlog( qr/Total number of /i ) ) {
+    next unless m/Node:/;
+    my ($node,$type,$quantity) = ( m/Node:\s+([^\s\)]+).*(?:objects|bytes)\s+([^:]+):\s*(.*)$/ );
+    next if defined $nodeX{$node};
+    next if $policyIcheck && !defined $policyI{$clients{$node}{domain}};
+    $nodes{$node} = $cnode++ unless defined $nodes{$node};
+    warn "Client transfer type ($type) not understood, please this output to authour:\n $_\n\n" and next unless defined $cfields{$type};
+    $quantity =~ s/^\s*|\s*$|,//g;
+    $quantity = to_megabytes( $quantity ) if $type eq "transferred";
+    $table[ $nodes{$node} ][ 0 ] = $node;
+    $table[ $nodes{$node} ][ $cfields{$type} ] = 0 unless defined $table[ $nodes{$node} ][ $cfields{$type} ];
+    $table[ $nodes{$node} ][ $cfields{$type} ] += $quantity;
+  }
+  for( remove_from_actlog( qr/ANE496[34]I/ ) ) {
+    next unless m/Node:/;
+    my $field = m/ANE4964I/ ? "ttime" : "dtime";
+    my ($node,$secs) = ( m/Node:\s+([^\s\)]+).*time:\s+([0-9.,:]+)/ );
+    next if defined $nodeX{$node};
+    next if $policyIcheck && !defined $policyI{$clients{$node}{domain}};
+    if( $field eq "ttime" ) {
+      # Total time is in HH:MM:SS format, reduce it to seconds.
+      my ($hrs,$mins,$ss) = ( $secs =~ m/^(\d+):(\d+):(\d+)/ );
+      $secs = $ss + $mins*60 + $hrs*60*60;
+
+      # Record the back event for the schedule graph
+      my $end_time = $_;
+      $end_time =~ s/$select_ts/$1/;
+      $end_time = to_unixtime( $end_time );
+      my $start_time = $end_time - $secs;
+      $G->event( $node, $start_time, $end_time, "backup ", "B" );
+
+    } else {
+      # Data transfer time is in seconds but with a comma thousands seperator
+      $secs =~ s/\,//g;
+    }
+    $table[ $nodes{$node} ][ 0 ] = $node;
+    $table[ $nodes{$node} ][ $cfields{$field} ] = 0 unless defined $table[ $nodes{$node} ][ $cfields{$field} ];
+    $table[ $nodes{$node} ][ $cfields{$field} ] += $secs;
+  }
+  $G->legend("B","backup");
+
+  # We need to average the compression stats.  This isn't exact but works reasonably well.
+  my %compressed = ();
+  for( remove_from_actlog( qr/ANE4968I/ ) ) {
+    next unless m/Node:/;
+    my ($node,$ratio) = ( m/Node:\s+([^\s\)]+).*by:\s+([0-9.]+)/ );
+    next if defined $nodeX{$node};
+    next if $policyIcheck && !defined $policyI{$clients{$node}{domain}};
+    $compressed{$node} = [] unless defined $compressed{$node};
+    push @{ $compressed{$node} }, $ratio;
+  }
+
+  # Adjust the transferred field, change seconds to minutes, average compression and zero any undefined cells.
+  my $slow_nodes = 0;
+  for( 1 .. --$cnode ) {
+    next if $policyIcheck && !defined $policyI{$clients{ @{$table[$_]}[0] }{domain}};
+    $table[ $_ ][ $cfields{transferred} ] = sprintf "%10.2fMB", $table[ $_ ][ $cfields{transferred} ];
+    for my $col ( 0 .. scalar( keys %cfields )-1 ) {
+      $table[ $_ ][ $col ] = 0 unless defined $table[ $_ ][ $col ];
+    }
+    for my $col ( $cfields{ttime}, $cfields{dtime} ) {
+      $table[ $_ ][ $col ] = POSIX::ceil( $table[ $_ ][ $col ] / 60 );
+    }
+    # Check for transfers that were over the transfer_time_max variable.
+    $slow_nodes = 1 if $table[ $_ ][ $cfields{ttime} ] > $tsm{transfer_time_max};
+
+    my $compr_total = 0; $compr_total += $_ for @{ $compressed{ $table[ $_ ][0] } };
+    $compr_total = POSIX::floor( $compr_total / @{ $compressed{ $table[ $_ ][0] } } );
+    $table[ $_ ][ $cfields{compress} ] = sprintf( "%2d%%", $compr_total );
+  }
+
+  # Remove other node information lines until we write/need code to process them.
+  remove_from_actlog( qr/ANE496[67]/ );
+
+  # Remove nodes from policy domains that we don't care about.
+  if( $policyIcheck ) {
+    @table = grep { @{$_}[0] eq "Node" or defined $policyI{$clients{@{$_}[0]}{domain}} } @table;
+  }
+
+  if( $slow_nodes ) {
+    alert( "slow nodes", <<SLOW_NODES, "Slow nodes" );
+Some nodes took longer than you have specified as the maximun backup time.  To eliminate this
+warning you should either fix the throughput problem on the node(s) in question or change the
+"transfer_time_max" variable in this script.
+SLOW_NODES
+  }
+
+  $R->add_table_to_body( $section, \@table );
+  my @deleted_filespaces = remove_from_actlog( qr/:\d\d\sANR0806I/ );
+  if( @deleted_filespaces ) {
+    alert( "deleted filespaces", <<DELETED_FS, "Deleted filespaces found!" );
+Some of the filespaces have been removed.  Check these over to make sure this is what you wanted.
+Filespaces that are successfully removed are no longer in the backup system.
+DELETED_FS
+    $R->add_log_to_body( $section, $_ ) for @deleted_filespaces;
+  }
+
+  # Check for any filespaces that haven't been backedup in n days.  (idea from: David McClelland <David.McClelland@reuters.com> )
+  my @Q = @{ $T->query_as_table( "select node_name, filespace_name, days( current_date ) - days( backup_end ) from filespaces" ) };
+  my $old_fs = 0;
+  for( 1 .. $#Q ) {
+    my ( $node, $fs, $days_since ) = @{ $Q[$_] };
+    next if defined $nodeX{$node};
+    next if $policyIcheck && !defined $policyI{$clients{$node}{domain}};
+    $days_since = 0 if $days_since eq "NULL";
+    next unless $days_since > $tsm{fs_max_days};
+    $R->add_log_to_body( $section, "$node hasn't backed up $fs in $days_since days!" );
+    $old_fs = 1;
+  }
+  alert( "filespaces have been missed", "", "Some filespaces haven't been backed up in over $tsm{fs_max_days}." ) if $old_fs;
+
+  # Check for nodes that have no filespaces but are registered.
+  my @Q2 = @{ $T->query_as_table( "select node_name, date(reg_time) from nodes where node_name not in (select node_name from filespaces)" ) };
+  my $dud_node = 0;
+  for( 1 .. $#Q2 ) {
+    my ( $node, $reg_date ) = @{ $Q2[$_] };
+    next if defined $nodeX{$node};
+    next if $policyIcheck && !defined $policyI{$clients{$node}{domain}};
+    $R->add_log_to_body( $section, "$node was registered on $reg_date but doesn't have any filespaces backed up." );
+    $dud_node = 1;
+  }
+  alert( "empty node found", "", "Some nodes that are registered have no backups on the system." ) if $dud_node;
+}
+
+#
+# This section attempts to give you a handle on the space usage of clients.
+#
+if( $sections{volume_occupancy} ) {
+  $title = "Volume Occupancy";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<VOLUME_OCCUPANCY );
+Below are the totals for volume occupancy. Virtual tapes are an estimate of the number of tapes
+required for storage based upon $tsm{vtape_size} MB/tape.
+VOLUME_OCCUPANCY
+
+  my $total_tapes = 0;
+  my @Q = @{ $T->query_as_table( "query auditoccupancy" ) };
+  shift @Q; # Remove the headers
+  unshift @Q, [ "Node", "Backup", "Archive", "HSM", "Total", "Virtual Tapes" ];
+  # Add the vtape column and format the fields.
+  for( 1 .. $#Q ) {
+    my $vtapes = POSIX::ceil( to_megabytes( $Q[$_][4] ) * $tsm{vtape_overhead} / $tsm{vtape_size} );
+    $total_tapes += $vtapes;
+    $Q[$_][1] = sprintf "%9.3f TB", to_terabytes( $Q[$_][1] );
+    $Q[$_][2] = sprintf "%9.3f TB", to_terabytes( $Q[$_][2] );
+    $Q[$_][3] = sprintf "%9.3f TB", to_terabytes( $Q[$_][3] );
+    $Q[$_][4] = sprintf "%9.3f TB", to_terabytes( $Q[$_][4] );
+    $Q[$_][5] = $vtapes;
+  }
+  $R->add_table_to_body( $section, \@Q );
+  $R->add_text_to_body( $section, "--> Total virtual tapes used: ".$total_tapes );
+}
+
+
+#
+# Show the schedules for clients and server scripts.
+#
+my %scripts;
+if( $sections{admin_schedules} ) {
+  $title = "Administrative Schedules";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<ADMIN_SCHED );
+Have a quick look over these and make sure they happen at the
+frequency and time that you want them to.
+ADMIN_SCHED
+
+  my @Q1 = @{ $T->query_as_table( "query sched" ) };
+  splice( @{ $Q1[$_] }, 1, 1 ) for 0 .. $#Q1; # remove the second column
+  $R->add_table_to_body( $section, \@Q1 );
+  my @Q2 = @{ $T->query_as_table( "query sched t=a" ) };
+  splice( @{ $Q2[$_] }, 0, 1 ) for 0 .. $#Q2; # remove the first column
+  $R->add_table_to_body( $section, \@Q2 );
+
+  my @sched_done = remove_from_actlog( qr/ANR275[01]I/ );
+  my %scheds = ();
+  for( @sched_done ) {
+    my ( $ts, $command ) = ( m/^(\S+\s+\S+)\s.*command\s+(\S+)\s/ );
+    # Filter out words like ON and OFF
+    $command =~ s/_?-?(?:ON|OFF)//;
+    $command = lc( $command );
+    if( m/ANR2750I/ ) {
+      $scheds{ $command } = to_unixtime( $ts );
+    } else {
+      if( defined $scheds{ $command } ) {
+	$G->event( "adm:".$command, $scheds{$command}, to_unixtime( $ts ), "admin command", "*" );
+	delete $scheds{$command};
+      }
+    }
+  }
+  $G->legend( "*", "administrative scheduled command" );
+
+  search_for_errors( qr/:\d\d\sANR1455E/, "admin script not found", "The following administrative scripts were not found:", "missing administrative script errors were found!" );
+
+  my @Q3 = @{ $T->query_as_table( "select * from scripts order by line" ) };
+  for( 1..$#Q3 ) {
+    my @L = @{ $Q3[$_] };
+    $scripts{$L[0]} = [] unless defined $scripts{$L[0]};
+    push @{ $scripts{ $L[0] } }, $L[2];
+  }
+}
+
+#
+#  There is a lot of information that can be gleaned about volumes.  Some information from this
+#  section is used in later sections.
+#
+
+# These three variables are used in the Scratch Volumes section.
+my %to_scratch = ();
+my %from_scratch = ();
+my %pending_scratch = ();
+my $total_pending = 0;
+my $run_volinfo = 0;
+my %lib_content = ();
+$lib_content{$_} = { scratch => 0, private => 0, data => 0, dbbackup => 0, backupset => 0 } for( @libraries );
+
+if( $sections{volume_information} ) {
+  $title = "Volume Information";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<VOL_INFO );
+This section lists any that are unusual or have special status.
+This is largely for your information, the server will deal with most of
+these during normal operation.
+VOL_INFO
+
+  sub check_vol {
+    my $vol = shift;
+    $volumes{$vol} = { library => 'unknown' } unless defined $volumes{$vol};
+  }
+
+  my %conditions;
+  my @logs = ();
+  my @problems = ();
+  $run_volinfo = 1;
+  my @Q = @{ $T->query_as_table( "select * from volumes" ) };
+  for( 1 .. $#Q ) {
+    my %b;
+    my $vol = $Q[$_][0];
+    $b{stgpool} = $Q[$_][1];
+    $b{devclass} = $Q[$_][2];
+    $b{capacity} = to_megabytes( $Q[$_][3] );
+    $b{util} = $Q[$_][4];
+    $b{status} = $Q[$_][5];
+    $b{access} = $Q[$_][6];
+    $b{reclaim} = "$Q[$_][7]" eq "NULL" ? 0 : $Q[$_][7];
+    $b{scratch} = $Q[$_][8] =~ m/yes/i ? 1 : 0;
+    $b{error} = $Q[$_][9] =~ m/yes/i ? 1 : 0;
+    $b{usage} = [];
+    $b{write_errors} = "$Q[$_][16]" eq "NULL" ? 0 : $Q[$_][16];
+    $b{read_errors} = "$Q[$_][17]" eq "NULL" ? 0 : $Q[$_][17];
+
+
+    # Add the status=pending tapes to the pending total.
+    ++$total_pending if $b{status} eq "PENDING";
+
+    # SLOW_QUERY
+    if( $tsm{slow_queries} ) {
+      my @VU = @{ $T->query_as_table( "select * from volumeusage where volume_name = '".$vol."'" ) };
+      for( 1 .. $#VU ) {
+	$b{usage} = [ @{ $b{usage} }, $VU[$_][0]."|".$VU[$_][5] ]
+      }
+    }
+    $volumes{$vol} = \%b;
+  }
+  my @Q2 = @{ $T->query_as_table( "select * from libvolumes" ) };
+  for( 1 .. $#Q2 ) {
+    my ( $lib, $vol, $status, $owner, $last_use, $home_element, $cleanings ) = @{ $Q2[$_] };
+    $volumes{$vol} = {} unless defined $volumes{$vol};
+    $volumes{$vol}->{library} = $lib;
+    $volumes{$vol}->{status} = $status;
+    $volumes{$vol}->{last_use} = $last_use;
+
+    # Record the library content breakdown.
+    ++$lib_content{$lib}->{scratch} if $status eq "Scratch";
+    ++$lib_content{$lib}->{private} if $status eq "Private";
+    ++$lib_content{$lib}->{data} if $last_use =~ m/data/i;
+    ++$lib_content{$lib}->{dbbackup} if $last_use =~ m/dbbackup/i;
+    ++$lib_content{$lib}->{backupset} if $last_use =~ m/backupset/i;
+  }
+
+  for( sort keys %volumes ) {
+    my $vol = $_;
+    my %b = %{ $volumes{$_} };
+
+    # Fill in missing information for volumes that are not in the volumes table.
+    $b{access} = "NONE" unless defined $b{access};
+    $b{read_errors} = 0 unless defined $b{read_errors};
+    $b{reclaim} = 0 unless defined $b{reclaim};
+    $b{write_errors} = 0 unless defined $b{write_errors};
+
+    my $problems = 0;
+    if( $b{reclaim} > $tsm{max_reclaim} ) {
+      push @logs, $vol." is reclaimable (".$b{reclaim}."%).";
+      $conditions{reclaimable} = "tapes with more than $tsm{max_reclaim}% reclaimable space.  These should be reclaimed daily.";
+    }
+    if( $b{status} =~ m/Private/i and $b{last_use} eq "NULL" ) {
+      # ALTER_TSM
+      if( $tsm{alter_tsm} and $tsm{empty_private_to_scratch} ) {
+	push @logs, $vol." was an empty private volume, moving to scratch.";
+	$T->query( "checkout libvolume ".$b{library}." '$vol' remove=no force=yes" );
+        $T->query( "label libvolume ".$b{library}." search=yes vollist='$vol' checkin=scratch labelsource=barcode" );
+      } else {
+	push @logs, $vol." is private but has no last use, perhaps this should be a scratch volume.";
+      }
+    }
+    if( $b{access} =~ m/unavailable/i ) {
+      my $upd = "";
+      # ALTER_TSM
+      if( $tsm{alter_tsm} ) {
+	$T->query( "update volume ".$vol." acc=readw" );
+	$upd = " (attempting to correct problem, investigate if this volume stays unavailable)";
+      }
+      push @logs, $vol." is unavailable.".$upd;
+      $conditions{unavailable} = "tapes in this state are not usable by the server.";
+      $problems = 1;
+    }
+    if( $b{access} =~ m/read.*only/i ) {
+      push @logs, $vol." is Read-Only.";
+      $conditions{"read-only"} = "check to make sure that you know why these tapes are read-only.";
+    }
+    if( $b{read_errors} > 0 ) {
+      push @logs, $vol." has ".$b{read_errors}." read-errors.";
+      $conditions{"read-errors"} = "tapes with read-errors are likely going bad.  Move the data off them and destroy them.";
+      $problems = 1;
+    }
+    if( $b{write_errors} > 0 ) {
+      push @logs, $vol." has ".$b{write_errors}." write-errors.";
+      $conditions{"write-errors"} = "tapes with write-errors are likely going bad.  Move the data off them and destroy them.";
+      $problems = 1;
+    }
+    if( $problems ) {
+      push @problems, $_ for summarize_repeats( map { s/.*\s+\d\d:\d\d:\d\d\s/ -> /; $_ } remove_from_actlog( qr/$vol/ ) );
+    }
+}
+
+  for( remove_from_actlog( qr/:\d\d\sANR8810I/ ) ) {
+    my ( $vol, $lib ) = ( m/.*Volume (\S+) .* library (\S+)./ );
+    push @logs, "$vol has been labeled in library $lib";
+    $conditions{"labeled"} = "newly labeled volumes are formated and ready for use.";
+  }
+  for( remove_from_actlog( qr/:\d\d\sANR413[23]I/ ) ) {
+    my $fix = m/ANR4132I/;
+    my ( $vol, $inspected, $damaged, $needupdate ) = ( m/.*for volume (\S+); (\d+) .*?, (\d+) .*?, (\d+) / );
+    push @logs, "$vol was audited: $inspected inspected, $damaged damaged, $needupdate need updates (FIX=".($fix?"YES":"NO").")";
+    $conditions{"audited"} = "an 'AUDIT VOLUME' command was issued and the system has verified the data on this volume.";
+  }
+  for( remove_from_actlog( qr/:\d\d\sANR1341I/ ) ) {
+    my ( $vol, $pool ) = ( m/.*volume\s+(\S+)\s+.*storage pool\s+(\S+)/ );
+    push @logs, "$vol has been returned to SCRATCH from $pool";
+    check_vol( $vol );
+    $to_scratch{ $volumes{$vol}->{library} } = 0 unless defined $to_scratch{ $volumes{$vol}->{library} };
+    ++$to_scratch{ $volumes{$vol}->{library} };
+    $conditions{"SCRATCH"} = "tapes returned to the SCRATCH pool are available to other uses.";
+  }
+  for( remove_from_actlog( qr/:\d\d\sANR8341I/ ) ) {
+    my ( $vol ) = ( m/.*volume\s+(\S+)./ );
+    push @logs, "$vol has been filled completely.";
+  }
+  for( remove_from_actlog( qr/:\d\d\sANR1340I/ ) ) {
+    my ( $vol, $pool ) = ( m/.*volume\s+(\S+)\s+.*storage pool\s+([^\s\.]+)/ );
+    push @logs, "$vol in $pool is empty and pending for movement to SCRATCH.";
+    check_vol( $vol );
+    $pending_scratch{ $volumes{$vol}->{library} } = 0 unless defined $pending_scratch{ $volumes{$vol}->{library} };
+    ++$pending_scratch{ $volumes{$vol}->{library} };
+    ++$total_pending;
+    $conditions{"SCRATCH"} = "tapes returned to the SCRATCH pool are available to other uses.";
+  }
+  for( remove_from_actlog( qr/:\d\d\sANR1342I/ ) ) {
+    my ( $vol, $pool ) = ( m/.*Scratch volume\s+(\S+)\s+.*from storage pool\s+(\S+)/ );
+    push @logs, "$vol has claimed from SCRATCH to $pool";
+    check_vol( $vol );
+    $from_scratch{ $volumes{$vol}->{library} } = 0 unless defined $from_scratch{ $volumes{$vol}->{library} };
+    ++$from_scratch{ $volumes{$vol}->{library} };
+    $conditions{"SCRATCH"} = "tapes returned to the SCRATCH pool are available to other uses.";
+  }
+  for( remove_from_actlog( qr/:\d\d\sANR1305I/ ) ) {
+    s/.*ANR\S+I\s+//;
+    push @logs, $_;
+    $conditions{"varied-online"} = "disk volumes that are activated and ready for use.";
+  }
+  for( remove_from_actlog( qr/:\d\d\sANR84(27|30)I/ ) ) {
+    my ( $vol, $lib ) = ( m/[Vv]olume\s+(\S+)\s.*library\s+([^\s\.]+)/ );
+    push @logs, "$vol was checked-in to library $lib.";
+    $conditions{"checked-in"} = "tapes that have been added to the library.";
+  }
+  if( $tsm{alter_tsm} and $tsm{audit_random_volumes} > 0 ) {
+    # ALTER_TSM
+    my @poss_audit = grep { defined $volumes{$_}{stgpool} && $volumes{$_}{stgpool} ne "" ? 1 : 0 } keys %volumes;
+    my $togo = $tsm{audit_random_volumes};
+    if( @poss_audit < $tsm{audit_random_volumes} ) {
+      $R->add_log_to_body( $section, "You've asked to audit ".$tsm{audit_random_volumes}." volumes but only ".scalar(@poss_audit)." volumes are available to audit." );
+      $togo = @poss_audit;
+    }
+    $R->add_log_to_body( $section, "Random audit will choose $togo volumes of a possible ".scalar(@poss_audit)."." );
+    my %to_audit = ();
+    while( $togo > 0 ) {
+      my $n = int(rand(@poss_audit));
+      my $v = $poss_audit[$n];
+      if( !defined $to_audit{$v} ) {
+	$to_audit{$v} = 1;
+	--$togo;
+      }
+    }
+    $R->add_log_to_body( $section, $_." has been selected to a random audit." ) for keys %to_audit;
+    $T->query("audit volume $_ fix=no") for keys %to_audit;
+    $conditions{"random audit"} = "these volumes will be auditted using 'AUDIT VOLUME'.";
+  }
+
+  if( @problems ) {
+    $R->add_text_to_body( $section, <<VOL_PROBLEMS );
+The following log entries are related to volume problems and should be looked at closely.  For
+context check the log entries nearby in the activity log to see what it happening.
+VOL_PROBLEMS
+    $R->add_log_to_body( $section, $_ ) for @problems;
+  }
+  $R->add_log_to_body( $section, $_ ) for summarize_repeats( @logs );
+  if( keys %conditions ) {
+    $R->add_text_to_body( $section, "" );
+    $R->add_formatted_text_to_body( $section, sprintf( $format{body_indent}."%-16s %s", $_.":", $conditions{$_} ) ) for sort { $a cmp $b } keys %conditions;
+  }
+
+  # Build the library volume breakdown table.
+  my @Q3 = ( [ "Library", "Scratch", "Private", "Data", "DbBackup", "BackupSet" ] );
+  for ( @libraries ) {
+    push @Q3, [ $_,
+		$lib_content{$_}->{scratch},
+		$lib_content{$_}->{private},
+		$lib_content{$_}->{data},
+		$lib_content{$_}->{dbbackup},
+		$lib_content{$_}->{backupset},
+	      ];
+  }
+  $R->add_text_to_body( $section, <<LIB_CONTENT );
+
+Below is the breakdown of what tapes are in your libraries.  Tapes can be either Scratch or Private and Private tapes may be in either Data (if they contain backup data), DbBackup (if they are database backups) or BackupSet (if they are part of a backupset).
+LIB_CONTENT
+  $R->add_table_to_body( $section, \@Q3 );
+
+}
+
+#
+# Detail as much useful information as we can about the db and recovery log.
+#
+if( $sections{db_and_log} ) {
+  $title = "Database and Log Space";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<DB_AND_LOG );
+The Database and Recovery log always need extra room in order to
+operate.  If they get full the server will crash.  If these get over
+$tsm{dblog_high}% utilization then you need to extend them.
+DB_AND_LOG
+
+  my $suggest_mirroring = 0;
+
+  sub get_vols {
+    my ( $row_ref, $type ) = @_;
+    # Grab the mirror status
+    my $vols = 0;
+    my $mirrors = 0;
+    my @Qmir = @{ $T->query_as_table( "select * from ".$type."volumes" ) };
+    for( 1..$#Qmir ) {
+      ++$vols;
+      ++$mirrors if $Qmir[$_][1] ne "NULL";
+    }
+    $suggest_mirroring = 1 if( $vols - $mirrors > 0 );
+
+    splice( @{ $row_ref }, 1, 0, ( $vols, $mirrors ) );
+  }
+
+  my @Q = ( @{ $T->query_as_table( "query db f=d" ) }, @{ $T->query_as_table( "query log f=d" ) } );
+  shift @Q; splice @Q, 1, 1; # Remove the headers
+  unshift @Q, [ "Type", "Vols.", "Mirror", "Max Size", "Cur. Size", "Util %", "Max Util%", "CacheHit%", "Changed%", "Last Backup" ];
+  # Format and filter the table.
+  for( 1 .. $#Q ) {
+    splice @{ $Q[$_] }, 2, 5;  # use splice to remove columns that we don't want
+    splice @{ $Q[$_] }, 4, 3;
+
+    if( $_ == 1 ) { # DB
+      unshift @{ $Q[$_] }, "DB";
+      splice @{ $Q[$_] }, 5, 5;
+      alert( "db utilization too high!", "", "Your database utilization is too high!" ) if $Q[$_][3] > $tsm{dblog_high};
+      get_vols( $Q[$_], "db" );
+
+    } else { # LOG
+      unshift @{ $Q[$_] }, "LOG";
+      # Log's don't have these stats
+      $Q[$_][5] = "N/A";
+      $Q[$_][6] = "N/A";
+      alert( "log utilization too high!", "", "Your log utilization is too high!" ) if $Q[$_][3] > $tsm{dblog_high};
+      get_vols( $Q[$_], "log" );
+    }
+
+  }
+  $R->add_table_to_body( $section, \@Q );
+  for ( remove_from_actlog( qr/:\d\d\sANR4550I/ ) ) {
+    $R->add_log_to_body( $section, $_ );
+    my ( $ts ) = ( m/(^\S+\s+\S+)\s+/ );
+    my ( $pid ) = ( m/process\s+(\d+)/i );
+    my $pidr = shift @{ $pids{$pid} };
+    $G->event("db:backup",to_unixtime($pidr->{ts}),to_unixtime($ts),"database backup","D");
+    $G->legend( "D", "database backup" );
+  }
+
+
+  $R->add_advice_to_body( $section, <<ADVICE_MIRRORS ) if $suggest_mirroring;
+You might want to consider fully mirroring (either 2 way or 3 way mirroring) your database and your
+recovery log to increase performance and reliability.
+ADVICE_MIRRORS
+
+}
+
+
+#
+# Display information about the storage pools
+#
+if( $sections{storage_pools} ) {
+  $title = "Storage Pools";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<STG_POOLS );
+Storage pools are where all the data ends up.  Pay particular
+attention to the storage pools with a device class of "DISK" as well
+as the percentage utilization.
+STG_POOLS
+
+  my @Q = @{ $T->query_as_table( "q stgpool" ) };
+  shift @Q; unshift @Q, [ "Name", "Device", "Capacity", "#Vols", "#Est.VTapes", "Pct.Util", "Pct.Migr.", "HighMigPct", "LowMigPct", "Next Pool" ];
+  for( 1 .. $#Q ) {
+    my $pool = $Q[$_][0];
+    $Q[$_][1] =~ s/^(\d+)/LIB $1/;
+    my $space = to_megabytes( $Q[$_][2] );
+    $Q[$_][2] = sprintf "%.2f TB", to_terabytes( $Q[$_][2] );
+    $Q[$_][3] = sprintf "%.1f%%", $Q[$_][3] eq "NULL" ? 0 : $Q[$_][3];
+    $Q[$_][4] = sprintf "%.1f%%", $Q[$_][4] eq "NULL" ? 0 : $Q[$_][4];
+    $Q[$_][5] = sprintf "%.1f%%", $Q[$_][5] eq "NULL" ? 0 : $Q[$_][5];
+    $Q[$_][6] = sprintf "%.1f%%", $Q[$_][6] eq "NULL" ? 0 : $Q[$_][6];
+    $Q[$_][7] =~ s/NULL//;
+    # Grab the number of volumes from the %volumes hash.
+    my ( $util ) = ( $Q[$_][3] =~ m/([\d\.]+)/ );
+    my @vols_in_pool = grep { defined $volumes{$_}->{stgpool} and $volumes{$_}->{stgpool} eq $pool } keys %volumes;
+
+    splice @{ $Q[$_] }, 3, 0, ( scalar @vols_in_pool, POSIX::ceil( $space * $util / 100 * $tsm{vtape_overhead} / $tsm{vtape_size} ) );
+    alert( "$pool utilization too high!", "SAME", "Storage Pool ".$pool."'s utilization is too high!" ) if $util > $tsm{stg_high};
+  }
+  if( !$run_volinfo ) {
+    # if we don't have the volume information then hide the columns that we don't have data for.
+    for( 0 .. $#Q ) {
+      splice @{ $Q[$_] }, 3, 2;
+    }
+  }
+  $R->add_table_to_body( $section, \@Q );
+
+  # Look for primary -> copy backups
+  my @copy = remove_from_actlog( qr/:\d\d\sANR1214I/ );
+  for( @copy ) {
+    my ( $timestamp, $pri, $copy, $files, $bytes, $ufiles, $ubytes ) = ( m/^([\d\/]+ [\d:]+).*primary storage pool (\S+) .* pool (\S+) [^:]*: (\d+),[^:]*: (\d+),[^:]*: (\d+),[^:]*: (\d+)/ );
+    $R->add_log_to_body( $section, "Primary stgpool $pri backed up to $copy at $timestamp" );
+    $R->add_log_to_body( $section, " -> $files files, ".sprintf("%.1f MB",to_megabytes($bytes." .B")).", unreadable: $ufiles files, ".sprintf("%.1f MB",to_megabytes($ubytes." .B"))."\n" );
+  }
+  for ( remove_from_actlog( qr/:\d\d\sANR1212I .MAINTENANCE/ ) ){
+    my ( $ts ) = ( m/(^\S+\s+\S+)\s+/ );
+    my ( $pid ) = ( m/process\s+(\d+)/i );
+    my $pidr = shift @{ $pids{$pid} };
+    $G->event("sb:".$pidr->{srcpool}."->".$pidr->{dstpool},to_unixtime($pidr->{ts}),to_unixtime($ts),"storage pool backup","S");
+    $G->legend( "S", "storage pool backup" );
+
+  }
+}
+
+#
+# Devote a special section to scratch volumes because they are so important
+#
+if( $sections{scratch_volumes} ) {
+  $title = "Scratch Volumes";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<RUN_SCRATCH );
+Scratch volumes are the volumes that TSM uses to do... well pretty
+much everything.  If you run out then the server will break and bad
+juju will happen. All of the numbers below should be greater than at
+least $tsm{scratch_low}.
+RUN_SCRATCH
+
+  my @Q = @{ $T->query_as_table( "select count(*) as ScratchVolumes,library_name from libvolumes where status='Scratch' group by library_name" ) };
+  shift @Q; unshift @Q, [ "# Scratch Volumes", "Library" ];
+  my %libscratch = ();
+  for( 1 .. $#Q ) {
+    alert( "scratch LOW: ".$Q[$_][1], "SAME", "You need more scratch tapes in ".$Q[$_][1]."." ) if $Q[$_][0] < $tsm{scratch_low};
+    $libscratch{$Q[$_][1]} = $Q[$_][0];
+  }
+  my @table = ( [ "Library", "Removed from", "", "Current SCRATCH", "", "Added to", "pending", "pending change" ] );
+  for( sort keys %libscratch ) {
+    push @table, [ $_, $from_scratch{$_} || 0 , "<-", $libscratch{$_}, "<-", $to_scratch{$_} || 0, $total_pending, $pending_scratch{$_} || 0 ];
+  }
+  if( !$run_volinfo ) {
+    # if we don't have the volume information then hide the columns that we don't have data for.
+    for( 0 .. $#table ) {
+      splice @{ $table[$_] }, 1, 2;
+      splice @{ $table[$_] }, 2, 4;
+    }
+  }
+  $R->add_table_to_body( $section, \@table );
+}
+
+#
+# Try to do automated processing of checkins?  Is this a good idea at all?
+#
+if( $sections{audit_lib} ) {
+  $title = "Importing/Labelling Volumes and Library Audit";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<IMPORT_VOLUMES );
+All volumes that are in the bulk entry ports (the little door on the front of the libraries)
+will be imported when this script is run.  Auditing of all library volumes is dones as well as a
+full search.  This script will also acknowledge all pending replies requests.
+IMPORT_VOLUMES
+
+  my $needed_replies = 0;
+  my $waits = 5;
+  my $first_run = 1;
+  for my $lib ( @libraries ) {
+    # ALTER_TSM
+    #$T->query( "checkin libvolume $lib search=bulk status=scratch checklabel=barcode" );
+    $T->query( "label libvolume $lib search=bulk checkin=scratch labelsource=barcode" );
+    $needed_replies++;
+    #$T->query( "checkin libvolume $lib search=yes status=scratch checklabel=barcode" );
+    $T->query( "audit library $lib" );
+  }
+  while( $waits-- > 0 && $needed_replies > 0 ) {
+    if( $first_run ) {
+      $first_run = 0;
+    } else {
+      sleep(1);
+    }
+    my $q = $T->query( "query req" );
+    for( grep { /^ANR\S+\s+\d{3}:/ } $T->last_full() ) {
+      chomp;
+      my ($reqid,$text) = ( m/^\S+\s+(\d{3}):\s+(.*)/ );
+      $T->query( "reply $reqid" );
+      $R->add_log_to_body( $section, "Acknowledged $reqid: $text" );
+      --$needed_replies;
+    }
+  }
+}
+
+#
+# List any active processes as well as any requests that are awaiting replies.
+#
+if( $sections{act_process} ) {
+  $title = "Active Processes, Requests, and Sessions";
+  $section = $R->heading( $title  );
+  $R->add_text_to_body( $section, <<ACTPRREQ );
+If there are a large number of process or requests then you probably need to have a look to see why.
+This might be normal; check the messages carefully to make sure.
+ACTPRREQ
+
+  my @Q1 = @{ $T->query_as_table( "query process" ) };
+  if( @Q1 ) {
+    $R->add_table_to_body( $section, \@Q1 );
+  } else {
+    $R->add_log_to_body( $section, "No active processes found." );
+  }
+  my @Q2 = @{ $T->query_as_table( "query request" ) };
+  if( @Q2 ) {
+    $R->add_table_to_body( $section, \@Q2 );
+  } else {
+    $R->add_log_to_body( $section, "No pending requests found." );
+  }
+  my @Q3 = @{ $T->query_as_table( "query session" ) };
+  if( @Q3 ) {
+    $R->add_table_to_body( $section, \@Q3 );
+  } else {
+    $R->add_log_to_body( $section, "No active sessions found." );
+  }
+  my @cancelled = remove_from_actlog( qr/:\d\d\sANR8458I/ );
+  if( @cancelled ) {
+    alert( "cancelled commands", "The following commands or processes were cancelled:", "Some commands have been cancelled." );
+    $R->add_log_to_body( $section, " -> $_" ) for @cancelled;
+  }
+}
+
+
+#
+#  Report on drive and path availability.
+#
+if( $sections{drives_and_paths} ) {
+  $title = "Paths and Drives";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<CHECK_PATHS );
+Check the output below to make sure that all the drives and the
+paths in TSM for them are online.
+CHECK_PATHS
+
+  my @Q1 = @{ $T->query_as_table( "select library_name, drive_name, device_type, drive_state,online from drives",
+				[ "Library","Drive","Type","State","Online?" ] ) };
+  for( 1..$#Q1 ) {
+    my ( $lib, $drv, $type, $state, $online ) = @{ $Q1[$_] };
+    alert( "drive offline", "", "Drive $drv in library $lib is offline." ) unless $online =~ m/yes/i;
+  }
+  $R->add_table_to_body( $section, \@Q1 );
+
+  my @Q2 = @{ $T->query_as_table( "q path" ) };
+  alert( "path offline", "", "Offline paths have been found!" ) if grep { /no\s+$/i } @Q2;
+  $R->add_table_to_body( $section, \@Q2 );
+
+  # See the average fill on volumes by device class
+  $R->add_text_to_body( $section, "Below is the actual amount of data that we are putting on tapes in each device class." );
+  $R->add_table_to_body( $section,
+			 $T->query_as_table( "select devclass_name, cast(avg(est_capacity_mb)/1024 as decimal(5,2)) from volumes where status='FULL' group by devclass_name",
+					     [ "Device Class", "GB/tape" ] ) );
+
+  $R->add_log_to_body( $section, "-> ".scalar( remove_from_actlog( qr/:\d\d\sANR83(?:29|37|40)I/ ) )." volumes were mounted." );
+  $R->add_log_to_body( $section, "-> ".scalar( remove_from_actlog( qr/:\d\d\sANR8(?:331|468)I/ ) )." volumes were dismounted." );
+  $R->add_log_to_body( $section, $_ ) for remove_from_actlog( qr/:\d\d\sANR8914I/ );
+
+  search_for_errors( qr/:\d\d\sANR8779E/, "drive errors", "Errors were found that affect the drives; log lines are included below:", "driver errors were found!" );
+  search_for_errors( qr/:\d\d\sANR8300E/, "library errors!", "Errors were found accessing libraries; the relevant log lines are included below:", "lines detailing library errors were found!" );
+
+
+  for( search_for_errors( qr/:\d\d\sANR0492I/,
+			  "drive contention",
+			  "Drive contention has been detected.  Have a look at the lines below and the \"Schedule Graph\" section if it is enabled to figure out why this might be.","lines indicating drive contention were found!"
+			) ) {
+    my ($ts) = ( m/$select_ts/ );
+    $ts = to_unixtime( $ts );
+    $G->event("all_drives_busy",$ts,$ts+1,"busy drives","*");
+    $G->legend("*","warnings or contention");
+  }
+}
+
+#
+# DRM plan's should be kept on another system.  If we have access to them over a network file share
+# or we are running on the TSM server then attache a copy of the latest plan to this report.
+#
+if( $sections{drm_plans} ) {
+  $title = "DRM Plan Files";
+  $section = $R->heading( $title );
+  my $adrm = ( $output{report_email} and $email{attach_drm_plan} ) ?
+    " (the latest plan will be attached to this email)" : "";
+  $R->add_text_to_body( $section, <<DRM_PLAN );
+Disaster recovery plan files are generated by the server every
+night.  They should be up to date.  The latest one found will be
+at in this directory$adrm:
+
+ PLAN LOCATION: $tsm{drmdir}
+DRM_PLAN
+  $tsm{drmfile} = "";
+  $R->add_log_to_body( $section, $_ ) for summarize_repeats( remove_from_actlog( qr/ANR69.*PREPARE/ ) );
+
+  # Find the latest DRM plan.
+  if( ! -d $tsm{drmdir} ) {
+    alert( "no drm directory", "Can't find the DRM directory: $tsm{drmdir}!", "There were problems finding your DRM plans!" );
+  } else {
+    $tsm{drmfile} = ( sort { $a cmp $b } grep { ! m/^\./ } `ls -t $tsm{drmdir}` )[-1];
+    chomp( $tsm{drmfile} );
+    if( ! -f $tsm{drmdir}."/".$tsm{drmfile} ) {
+      alert( "no DRM plan", "!! NO DRM PLAN FOUND", "There were problems finding your DRM plans!" );
+    } else {
+      # Extract the date from the filename and check to see that it's not too stale.
+      my ( $date ) = ( $tsm{drmfile} =~ m/.*(\d{8}).\d+$/ );
+      if( !defined $date or length( $date ) != 8 ) {
+	alert( "unhappy DRM plan", "!! DRM plan file name \"$tsm{drmdir}/$tsm{drmfile}\" doesn't parse properly.", "There were problems finding your DRM plans!" );
+      } else {
+	my ($dyear,$dmon,$dday) = ( substr( $date, 0, 4 ), substr( $date, 4, 2 ), substr( $date, 6, 2 ) );
+	my (undef,undef,undef,$cday,$cmon,$cyear,undef) = localtime( time() );
+	my $dctime = POSIX::mktime( 0,0,0, $dday, $dmon - 1 , $dyear - 1900 );
+	my $cctime = POSIX::mktime( 0,0,0, $cday, $cmon, $cyear );
+	my $stale = ( $cctime - $dctime ) / ( 24*60*60 );
+	if( $stale > 3 ) {
+	  alert( "stale DRM plan", "!! DRM plan file \"$tsm{drmdir}/$tsm{drmfile}\" is stale.", "There were problems finding your DRM plans!" );
+	}
+      }
+    }
+  }
+}
+
+#
+# Graph the schedules.  This is really useful to optimizing schedules.
+#
+if( $sections{schedule_graph} ) {
+  $title = "Schedule Graph";
+  $section = $R->heading( $title );
+  $G->title( "Graph of Usage" );
+  $R->add_formatted_text_to_body( $section, $G->graph() );
+}
+
+
+#
+# Do a little more mining on the logs and show anything that we don't recognise.
+#
+my %uniqlast = ();
+my @uniqlines = ();
+if( $sections{log_stats} ) {
+  $title = "Interesting Log Events and Statistics";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<INTERESTING_LOG );
+Some interesting information and statistics that we can glean from the logs are below.
+INTERESTING_LOG
+  $R->add_log_to_body( $section, "$initial_loglines total log lines were found in the activity log." );
+  $R->add_log_to_body( $section, "Ignored $ignored_loglines log lines while processing the activity log." );
+
+  # Filter out interesting stats and events
+  my %interesting = ();
+  my $act_prune = "";
+  my $event_prune = "";
+  for( 0..$#actlog ) {
+    next unless defined $actlog[$_];
+  LOG_SWITCH: {
+      my $msg = $actlog[$_];
+      $msg =~ s/^[\d\/]+\s[\d:]+\s//;
+      warn <<WARN_BAD_LINE and next unless( defined $msg and ! ( $msg =~ m/^\d\d\/\d\d\/\d\d\/\s\d\d:\d\d:\d\d\s/ ) );
+[log parsing error, date parse failed on line $_]
+  ->previous line: $actlog[$_-1]
+  -> current line: $actlog[$_]
+  ->    next line: $actlog[$_+1]
+  ->   we matched: "$msg"
+
+WARN_BAD_LINE
+      # "Activity log pruning started ..."
+      $msg =~ m/^ANR2102I/ && do { $act_prune = $msg; $actlog[$_] = "DELETEME"; last LOG_SWITCH; };
+      $msg =~ m/^ANR2103I/ && do { $msg =~ s/.*://; $interesting{$act_prune." -> $msg"} = 1; $actlog[$_] = "DELETEME"; last LOG_SWITCH; };
+      # "Inventory file expiration ..."
+      $msg =~ m/^ANR0812I/ && do { $interesting{$msg} = 1; $actlog[$_] = "DELETEME"; last LOG_SWITCH; };
+      # "Removing event records dated prior to ..."
+      $msg =~ m/^ANR2563I/ && do { $event_prune = $msg; $actlog[$_] = "DELETEME"; last LOG_SWITCH; };
+      $msg =~ m/^ANR2564I/ && do { $msg =~ s/.*\s-\s//; $interesting{$event_prune." -> $msg"} = 1; $actlog[$_] = "DELETEME"; last LOG_SWITCH; };
+      # "... Server device configuration ..."
+      $msg =~ m/^ANR2394I/ && do { $interesting{ $msg } = 1; $actlog[$_] = "DELETEME"; last LOG_SWITCH; }
+    }
+  }
+  @actlog = grep { ! m/^DELETEME$/ } @actlog;
+  $R->add_log_to_body( $section, $_ ) for sort { $a cmp $b } grep { s/ANR\S+\s+//; } keys %interesting;
+
+  # We need to collapse events that appear multiple times.
+  @uniqlines = summarize_repeats( @actlog );
+  # Compact a little more by removing some information.
+  @uniqlines = summarize_repeats( grep {
+    my $o = $_;
+    s/(process|required within|session|size) \d+/$1 XXX/ig;
+    s/(at)\s+\d+:\d+:\d+/$1 XX:XX:XX/ig;
+    s/(processed)\s+\d+\s+(items)/$1 X $2/ig;
+    s/(total of)\s+[\d,\.]+/$1 XXX/ig;
+    $uniqlast{$_} = $o;
+    1;
+  } @uniqlines );
+  $R->add_log_to_body( $section, "Found ".scalar( @uniqlines )." unique lines." );
+}
+
+#
+# Report any unknown log messages after collapsing similar events
+#
+if( $sections{unusual_logs} ) {
+  $title = "Unusual Activities in the Log";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<UNUSUAL_LOG );
+The output below includes any activity log entries that this script doesn't know about.  Please
+email any of these that you feel should be recognized (or ignored) to <paudley\@blackcat.ca> and
+I'll add them to future version of this script.  Similar messages are grouped together (ignoring
+process number, times, etc.)
+UNUSUAL_LOG
+
+  $R->add_log_to_body( $section, $_ ) for grep {
+    my $rep = "";
+    if( m/ (\(repeats \d+ times\))/ ) {
+      $rep = $1;
+      s/$rep//;
+    }
+    my $u = defined $uniqlast{$_} ? $uniqlast{$_} : $_;
+    $_ = $u.$rep;
+  } @uniqlines;
+}
+
+#
+# Report on various important script settings
+#
+if( $sections{script_information} ) {
+  $title = "Reporting Script Setttings";
+  $section = $R->heading( $title );
+  $R->add_text_to_body( $section, <<SCRIPT_INFO );
+Relevant settings for this report appear below.  If nodes are excluded they will appear here.
+SCRIPT_INFO
+
+  if( keys %nodeX ) {
+    $R->add_text_to_body( $section, "The following nodes were excluded:" );
+    for( sort keys %nodeX ) {
+      $R->add_log_to_body( $section, $_ );
+    }
+  }
+
+  if( $tsm{alter_tsm} ) {
+    $R->add_text_to_body( $section, "ALTER_TSM was active and this script may have modified your TSM server." );
+  }
+
+  $R->add_formatted_text_to_body( $section, "
+ General Settings:
+   Period:                                      ".$tsm{period}."
+   Low Scratch Threshold:                       ".$tsm{scratch_low}." tapes
+   DB High Usage Threshold:                     ".$tsm{dblog_high}."%
+   Storage Pool High Usage Threshold:           ".$tsm{stg_high}."%
+
+   Contact lost after:                          ".$tsm{contact_days}." days
+   Not backed up warning after:                 ".$tsm{fs_max_days}." days
+   Nodes are slow if they take longer than:     ".$tsm{transfer_time_max}." minutes
+   Volumes to be randomly autidited per run:    ".($tsm{alter_tsm} ? $tsm{audit_random_volumes} : 0 )." volumes
+   Empty private volumes will scratch'ed:       ".($tsm{empty_private_to_scratch} ? "YES" : "NO" )."
+
+ Virtual Tape Estimation:
+   Size of tapes:                      ".$tsm{vtape_size}." MB
+   Overhead per tape:                  ".(($tsm{vtape_overhead}-1)*100)."%
+" );
+}
+
+#
+# Debug section...
+#
+if( $sections{debug} ) {
+  $title = "Debug";
+  $section = $R->heading( $title );
+
+  if( defined $debug{parselog_orphan} ) {
+    $R->add_text_to_body( $section, "Found orphan parselog entries:" );
+    $R->add_log_to_body( $section, $_ ) for @{ $debug{parselog_orhphan} };
+  }
+  if( defined $debug{parselog_unhand} ) {
+    $R->add_text_to_body( $section, "Found unhandled parselog entries:" );
+    $R->add_log_to_body( $section, $_ ) for @{ $debug{parselog_unhand} };
+  }
+
+  # Sweep the pids hash for unmatch pids
+  for( keys %pids ) {
+    if( @{ $pids{$_} } ) {
+      for( @{ $pids{$_} } ) {
+	$R->add_formatted_text_to_body( $section, "
+  Unmatched PID
+    PID:     ".$_->{pid}."
+    TS:      ".$_->{ts}."
+    Pool:    ".$_->{pool}."
+    SrcPool: ".$_->{srcpool}."
+    DstPool: ".$_->{dstpool}."
+    Line:    ".$_->{line}."
+
+");
+      }
+    }
+  }
+}
+
+#
+# This section is used to catch unprocessed log lines during development
+#
+if( $sections{left_over_log} ) {
+  $title = "Left Over Logs";
+  $section = $R->heading( $title );
+
+  $R->add_log_to_body( $section, $_ ) for @actlog;
+
+}
+
+
+#
+#  Update the Serious Errors section if we have one.
+#
+if( $err_section >= 0 ) {
+  if( @errors ) {
+    $R->add_text_to_body( $err_section, "You have serious errors that should be looked at.  Please read any section indicated above carefully and pay special attention to the error log or have a good look at the activity log for this reporting period." );
+  } else {
+    $R->add_text_to_body( $err_section, "You have no serious errors that this script could find." );
+  }
+}
+
+###################################################################
+#
+#  Output the report based on the output styles selected
+#
+# -> email
+if( $output{report_email} ) {
+  $R->attach_file( "actlog.txt", join("\n",@actlog_raw) ) if $email{attach_actlog};
+  $R->attach_file( "serious_errrors.txt", join("\n",@errors) ) if $email{attach_data_errors};
+  $R->attach_file( $tsm{drmdir}."/".$tsm{drmfile} )
+    if( $email{attach_drm_plan} and  defined $tsm{drmfile} and -f  $tsm{drmdir}."/".$tsm{drmfile} );
+  if( $email{attach_scripts} ) {
+    my $S = "
+ADMIN SCRIPTS
+-------------
+
+";
+    for( sort keys %scripts ) {
+      my @lines = @{ $scripts{$_} };
+      $lines[0] = "no title set" unless $lines[0] ne "NULL";
+      $S .= "--> Script name: $_  (".$lines[0].")\n";
+      shift @lines;
+      for( @lines ) {
+	chomp;
+	$S .= "  $_\n";
+      }
+      $S .= "\n\n";
+    }
+    $R->attach_file( "admin_scripts.txt", $S );
+  }
+
+  $R->email_report( $email{sender}, $email{recipients}, $email{mailhost}, $email{compress_attachments} );
+}
+# -> stdout
+if( $output{report_stdout} ) {
+  print $R->text_report();
+}
+# -> txtsave
+if( $output{report_txtsave} ) {
+  open( RS, ">".$txtsave{filename} ) or die "Can't open file ".$txtsave{filename}."for saving the text report. ";
+  print RS $R->text_report();
+  close( RS );
+  if( @errors && $txtsave{errors_filename} ne "" ) {
+    open( ES, ">".$txtsave{errors_filename} ) or die "Can't open file ".$txtsave{errors_filename}." for saving the error report. ";
+    print ES "$_\n" for @errors;
+    close( ES );
+  }
+  if( @uniqlines && $txtsave{actlog_filename} ne "" ) {
+    open( ES, ">".$txtsave{actlog_filename} ) or die "Can't open file ".$txtsave{actlog_filename}." for saving the actlog report. ";
+    print ES "$_\n" for @uniqlines;
+    close( ES );
+  }
+}
+
+# Local Variables:
+# fill-column: 100
+# End:

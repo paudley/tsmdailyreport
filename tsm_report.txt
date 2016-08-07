@@ -1,0 +1,312 @@
+
+    --- TSM Daily Report for server TSM ---
+    generated on: Wed Nov 19 22:08:12 2003 
+
+_________________
+1. Serious Errors
+
+    1 missing administrative script errors were found! (see "4. Administrative Schedules" section for more detail)
+
+    You have serious errors that should be looked at. Please read any section
+  indicated above carefully and pay special attention to the error log or have
+  a good look at the activity log for this reporting period.
+
+
+___________________
+2. Client Schedules
+
+    Client schedules are listed below. Make sure that all the nodes you think
+  are being backed up are listed and note any failures. 
+
+  Scheduled Start   Actual Start      Schedule Name       Node Name Status     (1:1)
+  ----------------- ----------------- ------------------- --------- --------- 
+  11/18/03 21:00:00 NULL              COMPBIO_DAILY       PIG1      Missed    
+  11/18/03 21:00:00 11/18/03 22:24:47 COMPBIO_DAILY       WASP      Completed 
+  11/18/03 21:00:00 11/18/03 21:04:35 COMPBIO_DAILY       QUEENBEE  Completed 
+  11/18/03 23:00:00 NULL              NIGHTLY_INCREMENTAL ZEUS2     Missed    
+
+    COMMA hasn't contacted the server in 6 days!
+    PIG1 hasn't contacted the server in 6 days!
+    ZEUS hasn't contacted the server in 133 days!
+
+_________________
+3. Client Summary
+
+
+    Have a quick look over these and make sure they happen at the frequency and
+  time that you want them to. 
+
+  Node Inspected Backed Up Restored Updated Rebound Deleted Expired Failed Transferred  (2:2)
+  ---- --------- --------- -------- ------- ------- ------- ------- ------ ----------- 
+
+    PIG1 hasn't backed up  in 9 days!
+    PIG1 hasn't backed up /bioinformatics/pig1 in 8 days!
+    PIG1 hasn't backed up /boot in 9 days!
+    ZEUS2 hasn't backed up /GPFS1 in 9 days!
+    ZEUS2 hasn't backed up /GPFS3 in 6 days!
+    ZEUS2 hasn't backed up /GPFS3/em in 6 days!
+    ZEUS2 hasn't backed up /home in 10 days!
+    ZEUS2 hasn't backed up /opt in 10 days!
+    ZEUS2 hasn't backed up /tsm in 10 days!
+    ZEUS2 hasn't backed up /usr in 10 days!
+    ZEUS2 hasn't backed up /usr/sys/inst.images in 9 days!
+    ZEUS2 hasn't backed up /var in 10 days!
+    COMMA was registered on 2003-11-13 but doesn't have any filespaces backed up.
+    ZEUS was registered on 2003-03-27 but doesn't have any filespaces backed up.
+
+___________________
+4. Volume Occupancy
+
+
+    Below are the totals for volume occupancy. Virtual tapes are an estimate of
+  the number of tapes required for storage based upon 102400 MB/tape. 
+
+  Node     Backup       Archive      HSM          Total        Virtual Tapes  (3:3)
+  -------- ------------ ------------ ------------ ------------ ------------- 
+  ZEUS         0.000 TB     0.000 TB     0.000 TB     0.000 TB 0             
+  ZEUS2        2.080 TB     0.000 TB     0.024 TB     2.104 TB 24            
+  PIG1         0.667 TB     0.000 TB     0.000 TB     0.667 TB 8             
+  WASP         0.388 TB     0.000 TB     0.000 TB     0.388 TB 5             
+  QUEENBEE     0.033 TB     0.000 TB     0.000 TB     0.033 TB 1             
+  COMMA        0.000 TB     0.000 TB     0.000 TB     0.000 TB 0             
+
+    --> Total virtual tapes used: 38
+
+
+___________________________
+5. Administrative Schedules
+
+    Have a quick look over these and make sure they happen at the frequency and
+  time that you want them to. 
+
+  Domain         Schedule Name       Action Start Date/Time   Duration Period Day  (4:4)
+  -------------- ------------------- ------ ----------------- -------- ------ --- 
+  COMPBIOSERVERS COMPBIO_DAILY       Inc Bk 07/30/03 21:00:00     30 M 1 D    Any 
+  UNI            NIGHTLY_INCREMENTAL Inc Bk 04/04/03 23:00:00     20 M 1 D    Any 
+
+  Schedule Name Start Date/Time   Duration Period Day  (4:5)
+  ------------- ----------------- -------- ------ --- 
+  BKPSTG        04/02/03 07:00:00     10 M 1 D    Any 
+  DAILY_PROTECT 10/03/03 11:00:00     10 M 1 D    Any 
+  MIG_OFF       10/03/03 17:00:00     10 M 1 D    Any 
+  MIG_ON        10/03/03 13:00:00     10 M 1 D    Any 
+  REC_OFF       10/03/03 19:00:00     10 M 1 D    Any 
+  REC_OFF_COPY  10/03/03 20:00:00     10 M 1 D    Any 
+  REC_ON        10/03/03 16:00:00     10 M 1 D    Any 
+  REC_ON_COPY   10/03/03 14:00:00     10 M 1 D    Any 
+
+    
+
+
+    The following administrative scripts were not found:
+
+     -> 11/19/03 20:00:14 ANR1455E RUN: Command script REC_0FF_COPY does not exist.
+
+_________________________
+6. Database and Log Space
+
+
+    The Database and Recovery log always need extra room in order to operate.
+  If they get full the server will crash. If these get over 90% utilization
+  then you need to extend them. 
+
+  Type Max Size Cur. Size Pct. Util. MaxPctUtil Cache Hit Pct. Changed Last Backup        (5:6)
+  ---- -------- --------- ---------- ---------- --------- ------------ ----------------- 
+  DB   69,116   25,000    51.5       62.0       46.78     0.36         11/19/03 11:00:39 
+  LOG  12,152   12,152    1.2        8.9              N/A          N/A 10/03/03 12:19:50 
+
+    11/19/03 07:10:16 ANR4550I Full database backup (process 95) complete, 3287154 pages copied.
+    11/19/03 11:06:25 ANR4550I Full database backup (process 100) complete, 3287165 pages copied.
+
+_____________________
+7. Volume Information
+
+
+    This section lists any that are unusual or have special status. This is
+  largely for your information, the server will deal with most of these during
+  normal operation. 
+
+    Random audit will choose 3 volumes of a possible 50.
+    AHA685 has been selected to a random audit.
+    AHA643 has been selected to a random audit.
+    AHA699 has been selected to a random audit.
+    AAD590 was audited: 2947 inspected, 0 damaged, 0 need updates (FIX=NO)
+    AHA640 was audited: 1671346 inspected, 0 damaged, 0 need updates (FIX=NO)
+    AHA643 is reclaimable (57.7%).
+    AHA667 is reclaimable (41.0%).
+    AHA685 is reclaimable (27.6%).
+    AHA689 is reclaimable (98.1%).
+    AHA690 is reclaimable (77.1%).
+    AHA690 was audited: 62233 inspected, 0 damaged, 0 need updates (FIX=NO)
+    AHA697 was audited: 212483 inspected, 0 damaged, 0 need updates (FIX=NO)
+    AHA699 is reclaimable (42.3%).
+    AHA703 is reclaimable (64.5%).
+    AHA703 was audited: 391449 inspected, 0 damaged, 0 need updates (FIX=NO)
+    AHA723 is reclaimable (46.3%).
+    ASA316 was audited: 140572 inspected, 0 damaged, 0 need updates (FIX=NO)
+    ASA342 was audited: 278705 inspected, 0 damaged, 0 need updates (FIX=NO)
+
+
+
+  audited:         an 'AUDIT VOLUME' command was issued and the system has verified the data on this volume.
+  random audit:    these volumes will be auditted using 'AUDIT VOLUME'.
+  reclaimable:     tapes with more than 25% reclaimable space.  These should be reclaimed daily.
+
+________________
+8. Storage Pools
+
+    Storage pools are where all the data ends up. Pay particular attention to
+  the storage pools with a device class of "DISK" as well as the percentage
+  utilization. 
+
+  Name         Device    Capacity #Volumes #Est.VTapes Pct.Util Pct.Migr. HighMigPct LowMigPct Next Pool  (7:7)
+  ------------ --------- -------- -------- ----------- -------- --------- ---------- --------- --------- 
+  COMPBIO      LIB 3580  10.61 TB 22       18          14.9%    21.8%     90.0%      70.0%               
+  COMPBIODISK  DISK       0.26 TB 4        1           4.3%     3.6%      90.0%      70.0%     COMPBIO   
+  COMPBIO_COPY LIB 3580B 11.06 TB 20       18          14.3%    0.0%      0.0%       0.0%                
+  HSMPOOL      LIB 3580   3.64 TB 4        1           0.7%     20.0%     90.0%      70.0%               
+  SPACEMGPOOL  DISK       0.00 TB 0        0           0.0%     0.0%      90.0%      70.0%               
+  TAPEPOOL     LIB 3580B  0.00 TB 0        0           0.0%     0.0%      90.0%      70.0%               
+
+    Primary stgpool COMPBIODISK backed up to COMPBIO_COPY at 11/19/03 07:03:33
+     -> 4242 files, 564.6 MB, unreadable: 0 files, 0.0 MB
+
+    Primary stgpool COMPBIO backed up to COMPBIO_COPY at 11/19/03 07:03:54
+     -> 0 files, 0.0 MB, unreadable: 0 files, 0.0 MB
+
+
+__________________
+9. Scratch Volumes
+
+
+    Scratch volumes are the volumes that TSM uses to do... well pretty much
+  everything. If you run out then the server will break and bad juju will
+  happen. All of the numbers below should be greater than at least 10. 
+
+  Library  Removed from    Current SCRATCH    Added to pending pending change  (8:8)
+  -------- ------------ -- --------------- -- -------- ------- -------------- 
+  ARCH_LTO 0            <- 13              <- 0        0       0              
+  BACK_LIB 0            <- 14              <- 0        0       0              
+
+
+____________________________________________
+10. Active Processes, Requests, and Sessions
+
+    If there are a large number of process or requests then you probably need
+  to have a look to see why. This might be normal; check the messages carefully
+  to make sure. 
+
+  Process Number Process Description         Status                                                                                                                                                                                        (9:9)
+  -------------- --------------------------- -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
+  105            Audit Volume (Inspect Only) Volume AHA658 (storage pool COMPBIO_COPY), Files Processed: 1560, Damaged Files Found: 0, Partial Files Skipped: 0. Current Physical File (bytes): 1,822,714~Current input volume: AHA658.\  
+  106            Audit Volume (Inspect Only) Volume AHA695 (storage pool COMPBIO_COPY), Files Processed: 194, Damaged Files Found: 0, Partial Files Skipped: 0. Current Physical File (bytes): 182,832,278~Current input volume: AHA695.\ 
+  107            Audit Volume (Inspect Only) Volume AHA685 (storage pool COMPBIO), Files Processed: 0, Damaged Files Found: 0, Partial Files Skipped: 0. Current Physical File (bytes): None                                              
+  108            Audit Volume (Inspect Only) Volume AHA643 (storage pool COMPBIO_COPY), Files Processed: 0, Damaged Files Found: 0, Partial Files Skipped: 0. Current Physical File (bytes): None                                         
+  109            Audit Volume (Inspect Only) Volume AHA699 (storage pool COMPBIO), Files Processed: 0, Damaged Files Found: 0, Partial Files Skipped: 0. Current Physical File (bytes): None                                              
+
+    No pending requests found.
+
+  Sess Number Comm. Method Sess State Wait Time Bytes Sent Bytes Recvd Sess Type Platform Client Name  (9:10)
+  ----------- ------------ ---------- --------- ---------- ----------- --------- -------- ----------- 
+  4,089       Tcp/Ip       Run        0 S            1.6 G      23.8 M Node      Linux86  WASP        
+  4,092       ShMem        IdleW      2 S          156.9 M       2.4 M Node      AIX      ZEUS2       
+  4,095       ShMem        RecvW      0 S       546              9.2 G Node      AIX      ZEUS2       
+  4,258       Tcp/Ip       Run        0 S       124        170         Admin     Linux86  ADMIN       
+
+
+____________________
+11. Paths and Drives
+
+    Check the output below to make sure that all the drives and the paths in
+  TSM for them are online. 
+
+  Library  Drive   Type State  Online?  (10:11)
+  -------- ------- ---- ------ ------- 
+  ARCH_LTO DRIVE01 LTO  EMPTY  YES     
+  ARCH_LTO DRIVE02 LTO  EMPTY  YES     
+  ARCH_LTO DRIVE03 LTO  EMPTY  YES     
+  ARCH_LTO DRIVE04 LTO  EMPTY  YES     
+  BACK_LIB DRIVE05 LTO  LOADED YES     
+  BACK_LIB DRIVE06 LTO  LOADED YES     
+  BACK_LIB DRIVE07 LTO  LOADED YES     
+  BACK_LIB DRIVE08 LTO  LOADED YES     
+
+  Source Name Source Type Destination Name Destination Type On-Line  (10:12)
+  ----------- ----------- ---------------- ---------------- ------- 
+  TSM         SERVER      ARCH_LTO         LIBRARY          Yes     
+  TSM         SERVER      DRIVE01          DRIVE            Yes     
+  TSM         SERVER      DRIVE02          DRIVE            Yes     
+  TSM         SERVER      DRIVE03          DRIVE            Yes     
+  TSM         SERVER      DRIVE04          DRIVE            Yes     
+  TSM         SERVER      BACK_LIB         LIBRARY          Yes     
+  TSM         SERVER      DRIVE05          DRIVE            Yes     
+  TSM         SERVER      DRIVE06          DRIVE            Yes     
+  TSM         SERVER      DRIVE07          DRIVE            Yes     
+  TSM         SERVER      DRIVE08          DRIVE            Yes     
+
+    Below is the actual amount of data that we are putting on tapes in each
+  device class.
+
+  Device Class GB/tape  (10:13)
+  ------------ ------- 
+  3580         99.65   
+  3580B        100.42  
+
+    -> 23 volumes were mounted.
+    -> 19 volumes were dismounted.
+
+_________________
+12. DRM Plan File
+
+
+    Disaster recovery plan files are generated by the server every night. They
+  should be up to date. The latest one found will be at in this directory:
+    PLAN LOCATION: /grid/zeus2/.TSM/DRM 
+
+    11/19/03 07:10:16 ANR6900I PREPARE: The recovery plan file /usr/tivoli/tsm/drmplans/drbio.20031119.071016 was created.
+    11/19/03 07:10:16 ANR6918W PREPARE: Recovery instructions file /usr/tivoli/tsm/server/bin/RECOVERY.INSTRUCTIONS.DATABASE not found.
+    11/19/03 07:10:16 ANR6918W PREPARE: Recovery instructions file /usr/tivoli/tsm/server/bin/RECOVERY.INSTRUCTIONS.GENERAL not found.
+    11/19/03 07:10:16 ANR6918W PREPARE: Recovery instructions file /usr/tivoli/tsm/server/bin/RECOVERY.INSTRUCTIONS.INSTALL not found.
+    11/19/03 07:10:16 ANR6918W PREPARE: Recovery instructions file /usr/tivoli/tsm/server/bin/RECOVERY.INSTRUCTIONS.OFFSITE not found.
+    11/19/03 07:10:16 ANR6918W PREPARE: Recovery instructions file /usr/tivoli/tsm/server/bin/RECOVERY.INSTRUCTIONS.STGPOOL not found.
+    11/19/03 07:10:16 ANR6923W PREPARE: No recovery media defined for machine ZEUS.
+    11/19/03 07:10:16 ANR6924W PREPARE: No recovery instructions defined for machine ZEUS.
+    11/19/03 07:10:16 ANR6925W PREPARE: No machine characteristics defined for machine ZEUS.
+
+_________________________________________
+13. Interesting Log Events and Statistics
+
+
+    Some interesting information and statistics that we can glean from the logs
+  are below. 
+
+    2119 total log lines were found in the activity log.
+    Ignored 2040 log lines while processing the activity log.
+    Activity log pruning started: removing entries prior to 10/20/03 00:00:00. ->  426 records removed.
+    BACKUP DEVCONFIG: Server device configuration information was written to all device configuration files.
+    Inventory file expiration process 102 completed: examined 5313929 objects, deleting 1178 backup objects, 0 archive objects, 0 DB backup volumes, and 0 recovery plan files. 0 errors were encountered.
+    Removing event records dated prior to 11/09/03 00:00:00. -> 12 records deleted.
+    Found 8 unique lines.
+
+_________________________________
+14. Unusual Activities in the Log
+
+
+    The output below includes any activity log entries that this script doesn't
+  know about. Please email any of these that you feel should be recognized (or
+  ignored) to <paudley@blackcat.ca> and I'll add them to future version of this
+  script. Similar messages are grouped together (ignoring process number,
+  times, etc.) 
+
+    11/18/03 23:20:01 ANR2578W Schedule NIGHTLY_INCREMENTAL in domain UNI for node ZEUS2 has missed its scheduled start up window.
+    11/19/03 07:03:33 ANR0986I Process XXX for BACKUP STORAGE POOL running in the FOREGROUND processed X items for a total of XXX bytes with a completion state of SUCCESS at XX:XX:XX. (repeated 2 times)
+    11/19/03 07:03:33 ANR1229W Volume AHA689 cannot be backed up - volume is offline or access mode is "unavailable" or "destroyed".
+    11/19/03 11:06:25 ANR2463I BACKUP VOLHISTORY: Server sequential volume history information was written to all configured history files.
+    11/19/03 11:06:25 ANR2467I DELETE VOLHISTORY: 0 sequential volume history entries were successfully deleted.
+    11/19/03 11:06:25 ANR2825I License audit process 101 completed successfully - 6 nodes audited.
+    11/19/03 13:03:55 ANR0986I Process 103 for MIGRATION running in the BACKGROUND processed 4242 items for a total of 592,027,648 bytes with a completion state of SUCCESS at 13:03:55.
+    11/19/03 21:30:01 ANR2578W Schedule COMPBIO_DAILY in domain COMPBIOSERVERS for node PIG1 has missed its scheduled start up window. (repeated 2 times)
+
+
+
+[ produced by tsm_daily_report v1.3 by Patrick Audley <paudley@blackcat.ca> ]

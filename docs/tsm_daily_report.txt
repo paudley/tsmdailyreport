@@ -1,0 +1,179 @@
+NAME
+    tsm_daily_report - emails daily summaries of Tivoli Storage Manager
+    activity
+
+SYNOPSIS
+    tsm_daily_report [options]
+
+    Modify the variables at the top of the script and then run it without
+    any arguments. For daily reports, place this script in your crontab. The
+    following options override variables set in the script. All options may
+    be abbreviated to the shortest unique string.
+
+  Options
+   General Options
+     --config <filename>        read config values from the specified file (see Config Files below)
+
+     AUTHENTICATION:
+      --admin <id>               the TSM admin id to use
+      --password <password>      the password for the TSM admin
+
+     OUTPUT:
+      --stdout                   only report to stdout
+      --email                    only report via email
+      --txtsave                  only report to the text save file
+
+     SELECTING NODES:
+      --exclude <node>           exclude node from the report (may be specified multiple times)
+      --policy-domain <domain>   includes only selected domains (may be specified multiple times)
+
+         Note:  If you use --policy-domain or the policy_domain config file option you will get _only_
+                the domains you specify.  The default is to include all domains.
+
+     GENERAL:
+      --period <sql query>       specify a period using TSM SQL syntax (like "begind=-1")
+      --transfer-time-max <secs> total transfer time after which we warn about slow clients
+      --dsmadmc <path>           specify the path of the dsmadmc executable
+      --slow-queries             turn slow or iterative queries on
+      --noslow-queries           turn slow or iterative queries off
+      --alter-tsm                turn on (or use --noalter-tsm to turn off) queries that might alter TSM
+      --empty-pri-to-scr         turn on changing empty private volumes into scratch volumes
+
+     DOCUMENTATION:
+      --help                     display usage information
+      --version                  display verison information
+      --man                      display the man page for this script
+
+     EMAIL OPTIONS:
+      --recipient <address>      send to this address
+      --sender <address>         send from this address
+
+   Section Selection Options
+    Sections can be toggled individually by using these options or by
+    modifying the %sections hash in the configuration area of the script. A
+    section can be disabled by using a "no" ("--foo" is disabled with
+    "--nofoo"). Section options are cumulative.
+
+     --no-sections              turns all sections off
+     --all-sections             turns all sections on
+
+     --sec_act_process
+     --sec_admin_schedules
+     --sec_audit_lib
+     --sec_client_schedules
+     --sec_client_summary
+     --sec_db_and_log
+     --sec_drives_and_paths
+     --sec_drm_plans
+     --sec_log_stats
+     --sec_schedule_graph
+     --sec_scratch_volumes
+     --sec_serious_errors
+     --sec_script_information
+     --sec_storage_pools
+     --sec_unusual_logs
+     --sec_volume_information
+     --sec_volume_occupancy
+
+    For example to enable just the client summary section regardless of the
+    settings in the script use:
+
+     tsm_daily_report --no-sections --sec_client_summary
+
+    Or to disable only the audit library section use:
+
+     tsm_daily_report --all-sections --nosec_audit_lib
+
+    Or the use the settings in the script but disable the drm plan section
+    use:
+
+     tsm_daily_report --nodrm_plans
+
+   Special Activity Log Options
+    Sometimes it's desirable to save the activity log to file and report on
+    it later. This can be done with these options:
+
+     --process-log-file <filename>          Read from a file instead of using "query actlog"
+     --save-log-file <filename>             Save the log to a file and exit
+     --query-actlog                         Query the activity log
+     --noquery-actlog                       Skip activity log queries
+
+   Debugging Options
+    When debugging, or possibly to speed up multiple runs of this script,
+    you can save the queries to dsmadmc and reuse them. They will be stored
+    in a database in the current working directoy and used on subsequent
+    runs. This can be useful when combined with the --process-log-file
+    option in order to process many saved logs without repeating queries to
+    the server. It is always safe to delete the created query-cache file
+    when you no longer wish to store the queries. This option requires the
+    following additional perl modules: Memoize, GDBM_File, and MLDBM.
+
+     --memoize [0|1]                        Enable/Disable memoizeing queries.
+
+   Config Files
+    Options may also be specified using a config file. By default we look
+    for a config file in /etc/tsm_daily_report.config but you can specify a
+    file (or multiple files) to read on the command line. If you specify the
+    filename "-" (a single dash) then the config will be read from standard
+    input.
+
+    The config file is a standard text file that may contain:
+
+        - blank lines
+        - comment lines starting with either # or *
+        - variable settings that start with the word "set"
+        - exclusions for nodes that take the form of "exclude_node <node>", one node per line.
+        - policy domain selections that take the form of "policy_domain <domain>", one domain per line.
+
+    Variables can be set by taking the variable name from the script and
+    changing it thusly:
+
+       In Script                               In Config File
+       -------------------------------         ----------------------------------
+       $tsm{alter_tsm} = 1               ->    set tsm->alter_tsm = 1              # Turn on TSM altering queries
+       $email{sender} = "foo@foo.com"    ->    set email->sender = foo@foo.com     # Change the email report sender
+       $sections{db_and_log} = 0         ->    set sections->db_and_log = 0        # Turn off the DB and Log section
+
+    You can only set the variables that are used in the configuration of the
+    script; these are all hashes in the top of the script that are declared
+    using "our".
+
+    An example config file:
+
+       # Configure our TSM server
+       set tsm->server = BIGSERVER
+
+       # Change the output options
+       set email->sender = admin@company.com
+       set output->email = 1
+
+       # Skip a few nodes
+       exclude_node yak
+       exclude_node idiotsmachine
+
+       # Only show these two policy domains
+       policy_domain BIGSERVERS
+       policy_domain IMPORTANTCLIENTS
+
+AUTHOURS
+    Written by Patrick Audley <paudley@blackcat.ca> http://blackcat.ca
+
+     Contributions from:
+      David McClelland <David.McClelland@reuters.com>
+      Marcel J.E. Mol <marcel@mesa.nl>
+      Shawn Bierman <BiermanS@methodisthealth.org>
+      Tobias Hofmann <tobias.hofmann@medien.uni-weimar.de>
+      James W. Johnke <jjohnke@yahoo.com>
+      Jason A. Specland <jas2005@med.cornell.edu>
+      Dariusz Pietrzak <eyck@kuszelas.eu>
+
+BUGS
+    Please send me any comments, bug reports, suggestions or flame mail :)
+
+COPYRIGHT
+    Copyright 2003-2010 by Patrick Audley <paudley@blackcat.ca>
+
+    This program is licensed under the terms of the GPL. If you didn't
+    recieve a copy of the license, you can get it from
+    http://www.gnu.org/licenses/gpl.html
+
